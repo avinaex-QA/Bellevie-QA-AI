@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Test Case Generator</title>
+  <link rel="stylesheet" href="/static/css/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+<!-- ── HEADER ─────────────────────────────────────────────────────────────── -->
+<header class="header">
+  <div class="header-inner">
+    <div class="brand">
+      <svg class="brand-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="brand-name">AI Test Case Generator</span>
+      <span class="brand-badge">QA Assistant</span>
+    </div>
+    <div class="header-actions">
+      <a href="/docs" target="_blank" class="btn-ghost">API Docs</a>
+      <div id="health-dot" class="health-dot" title="Checking API..."></div>
+    </div>
+  </div>
+</header>
+
+<!-- ── MAIN LAYOUT ─────────────────────────────────────────────────────────── -->
+<main class="layout">
+
+  <!-- LEFT SIDEBAR — Input Panel -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <h2>Input Sources</h2>
+      <p class="sidebar-sub">Provide one or more requirement sources</p>
+    </div>
+
+    <!-- Source Tabs -->
+    <div class="source-tabs">
+      <button class="tab-btn active" data-tab="jira">
+        <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="2"/><path d="M8 12l3 3 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Jira
+      </button>
+      <button class="tab-btn" data-tab="document">
+        <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Document
+      </button>
+      <button class="tab-btn" data-tab="text">
+        <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M4 6h16M4 10h16M4 14h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Text
+      </button>
+      <button class="tab-btn" data-tab="github">
+        <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0020 4.77 5.07 5.07 0 0019.91 1S18.73.65 16 2.48a13.38 13.38 0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 005 4.77a5.44 5.44 0 00-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 009 18.13V22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        GitHub PR
+      </button>
+    </div>
+
+    <!-- Jira Tab -->
+    <div class="tab-panel active" id="tab-jira">
+      <div class="form-group">
+        <label class="form-label">
+          Jira Ticket ID
+          <span class="label-hint">e.g. PROJ-123</span>
+        </label>
+        <div class="input-with-btn">
+          <input
+            type="text"
+            id="jira-id"
+            class="form-input"
+            placeholder="Enter Jira ticket ID..."
+            autocomplete="off"
+          />
+          <button class="btn-icon" id="fetch-jira-btn" title="Preview ticket">
+            <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke="currentColor" stroke-width="2"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" stroke="currentColor" stroke-width="2"/></svg>
+          </button>
+        </div>
+        <div id="jira-preview" class="preview-card hidden"></div>
+      </div>
+    </div>
+
+    <!-- Document Tab -->
+    <div class="tab-panel hidden" id="tab-document">
+      <div class="form-group">
+        <label class="form-label">
+          Upload Document
+          <span class="label-hint">PDF, DOCX, TXT</span>
+        </label>
+        <div class="dropzone" id="dropzone">
+          <input type="file" id="file-input" accept=".pdf,.docx,.doc,.txt,.md" class="hidden" />
+          <div class="dropzone-content" id="dropzone-content">
+            <svg viewBox="0 0 24 24" fill="none" width="40" height="40" class="dropzone-icon"><path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <p class="dropzone-text">Drag & drop your file here</p>
+            <p class="dropzone-sub">or <button class="link-btn" onclick="document.getElementById('file-input').click()">browse files</button></p>
+            <p class="dropzone-types">PDF · DOCX · TXT · MD</p>
+          </div>
+        </div>
+        <div id="file-selected" class="file-badge hidden"></div>
+      </div>
+    </div>
+
+    <!-- Text Tab -->
+    <div class="tab-panel hidden" id="tab-text">
+      <div class="form-group">
+        <label class="form-label">
+          Requirements Text
+          <span class="label-hint">Paste BRD, PRD, or any requirement</span>
+        </label>
+        <textarea
+          id="text-input"
+          class="form-textarea"
+          placeholder="Paste your requirements here...&#10;&#10;Example:&#10;The user should be able to login with email and password.&#10;Password must be at least 8 characters.&#10;After 5 failed attempts, the account should be locked..."
+          rows="12"
+        ></textarea>
+        <div class="char-count"><span id="char-count">0</span> characters</div>
+      </div>
+    </div>
+
+    <!-- GitHub Tab -->
+    <div class="tab-panel hidden" id="tab-github">
+      <div class="form-group">
+        <label class="form-label">
+          GitHub PR URL
+          <span class="label-hint">Optional: requires GitHub token in .env</span>
+        </label>
+        <input
+          type="url"
+          id="github-url"
+          class="form-input"
+          placeholder="https://github.com/owner/repo/pull/123"
+          autocomplete="off"
+        />
+        <p class="form-hint">The AI will analyze the code diff and generate regression test cases.</p>
+      </div>
+    </div>
+
+    <!-- Additional Context (always visible) -->
+    <div class="form-group mt-4">
+      <label class="form-label">
+        Additional Context
+        <span class="label-hint">Optional</span>
+      </label>
+      <input
+        type="text"
+        id="additional-context"
+        class="form-input"
+        placeholder="e.g. Mobile app, REST API, payment module..."
+      />
+    </div>
+
+    <!-- Generate Button -->
+    <button class="btn-primary btn-generate" id="generate-btn">
+      <svg id="btn-icon" viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M13 10V3L4 14h7v7l9-11h-7z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span id="btn-text">Generate Test Cases</span>
+    </button>
+
+    <!-- Stats (visible after generation) -->
+    <div id="stats-panel" class="stats-panel hidden">
+      <div class="stat-card high"><span class="stat-num" id="stat-high">0</span><span class="stat-label">High</span></div>
+      <div class="stat-card medium"><span class="stat-num" id="stat-medium">0</span><span class="stat-label">Medium</span></div>
+      <div class="stat-card low"><span class="stat-num" id="stat-low">0</span><span class="stat-label">Low</span></div>
+      <div class="stat-card total"><span class="stat-num" id="stat-total">0</span><span class="stat-label">Total</span></div>
+    </div>
+
+    <!-- Export History Button -->
+    <button class="btn-history-toggle" id="history-toggle-btn" onclick="toggleHistoryPanel()">
+      <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      Export History
+      <span class="history-count-badge" id="history-count-badge">0</span>
+    </button>
+  </aside>
+
+  <!-- MAIN CONTENT — Results Panel -->
+  <section class="results-panel" id="results-panel">
+
+    <!-- Empty State -->
+    <div class="empty-state" id="empty-state">
+      <svg viewBox="0 0 24 24" fill="none" width="64" height="64" class="empty-icon">
+        <path d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <h3>Ready to Generate</h3>
+      <p>Provide your requirements using the inputs on the left and click <strong>Generate Test Cases</strong>. The AI performs coverage-driven analysis and generates test cases based on requirement complexity.</p>
+      <ul class="feature-list">
+        <li>✓ Functional & negative test cases</li>
+        <li>✓ Edge cases & boundary values</li>
+        <li>✓ Security & API tests</li>
+        <li>✓ Regression impact analysis</li>
+        <li>✓ Priority & tag assignment</li>
+        <li>✓ Export to formatted Excel</li>
+      </ul>
+    </div>
+
+    <!-- Loading State -->
+    <div class="loading-state hidden" id="loading-state">
+      <div class="spinner-ring"></div>
+      <h3 id="loading-title">Analyzing Requirements...</h3>
+      <p id="loading-sub">The AI is reading your requirements and designing test cases</p>
+      <div class="loading-steps">
+        <div class="load-step active" id="ls-1">
+          <div class="load-dot"></div>
+          <span>Parsing input sources</span>
+        </div>
+        <div class="load-step" id="ls-2">
+          <div class="load-dot"></div>
+          <span>AI analyzing requirements</span>
+        </div>
+        <div class="load-step" id="ls-3">
+          <div class="load-dot"></div>
+          <span>Generating test cases</span>
+        </div>
+        <div class="load-step" id="ls-4">
+          <div class="load-dot"></div>
+          <span>Deduplicating & formatting</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Error State -->
+    <div class="error-state hidden" id="error-state">
+      <svg viewBox="0 0 24 24" fill="none" width="48" height="48" class="error-icon"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 8v4m0 4h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <h3>Generation Failed</h3>
+      <p id="error-message">An error occurred. Please try again.</p>
+      <button class="btn-secondary" onclick="resetToEmpty()">Try Again</button>
+    </div>
+
+    <!-- Results State -->
+    <div class="results-content hidden" id="results-content">
+
+      <!-- View Tabs -->
+      <div class="view-tabs">
+        <button class="view-tab active" id="tab-testcases" onclick="switchView('testcases')">
+          <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" stroke-width="2"/></svg>
+          Test Cases
+          <span class="view-tab-count" id="tab-tc-count"></span>
+        </button>
+        <button class="view-tab" id="tab-history" onclick="switchView('history')">
+          <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          Export History
+          <span class="view-tab-count" id="tab-hist-count"></span>
+        </button>
+      </div>
+
+      <!-- Results Header Bar -->
+      <div class="results-header" id="results-header">
+        <div class="results-meta">
+          <h2 id="results-title">Test Cases</h2>
+          <span class="module-badge" id="module-badge"></span>
+        </div>
+        <div class="results-actions">
+          <div class="filter-bar">
+            <button class="filter-btn active" data-filter="all">All</button>
+            <button class="filter-btn" data-filter="High">High</button>
+            <button class="filter-btn" data-filter="Medium">Medium</button>
+            <button class="filter-btn" data-filter="Low">Low</button>
+          </div>
+          <button class="btn-download" id="download-btn">
+            <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Export Excel
+          </button>
+        </div>
+      </div>
+
+      <!-- Search bar -->
+      <div class="search-bar-wrap" id="search-bar-wrap">
+        <svg viewBox="0 0 24 24" fill="none" width="16" height="16" class="search-icon"><circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2"/><path d="m21 21-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <input type="text" id="search-input" class="search-input" placeholder="Search test cases by title, steps, or tags..." />
+      </div>
+
+      <!-- Table -->
+      <div class="table-wrap" id="table-wrap">
+        <table class="tc-table" id="tc-table">
+          <thead>
+            <tr>
+              <th class="col-id">ID</th>
+              <th class="col-priority">Priority</th>
+              <th class="col-type">Type</th>
+              <th class="col-tags">Tags</th>
+              <th class="col-title">Title</th>
+              <th class="col-pre">Preconditions</th>
+              <th class="col-steps">Steps</th>
+              <th class="col-expected">Expected Result</th>
+              <th class="col-actual">Actual Result</th>
+            </tr>
+          </thead>
+          <tbody id="tc-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- No results after filter -->
+      <div class="no-filter-results hidden" id="no-filter-msg">
+        <p>No test cases match your filter. <button class="link-btn" onclick="clearFilter()">Clear filter</button></p>
+      </div>
+
+      <!-- ── EXPORT HISTORY VIEW ──────────────────────────────────── -->
+      <div class="history-view hidden" id="history-view">
+        <div class="history-toolbar">
+          <div class="history-toolbar-left">
+            <h3>Export History</h3>
+            <span class="history-sub">All saved Excel exports — saved to <code>/exports/</code></span>
+          </div>
+          <button class="btn-icon" onclick="loadHistory(true)" title="Refresh history">
+            <svg viewBox="0 0 24 24" fill="none" width="15" height="15"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+
+        <!-- History loading spinner -->
+        <div class="history-loading hidden" id="history-loading">
+          <div class="spinner-ring" style="width:32px;height:32px;border-width:2px;"></div>
+          <span>Loading history...</span>
+        </div>
+
+        <!-- History empty state -->
+        <div class="history-empty hidden" id="history-empty">
+          <svg viewBox="0 0 24 24" fill="none" width="40" height="40" style="color:var(--text-muted);opacity:0.4"><path d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <p>No exports yet. Generate test cases and click <strong>Export Excel</strong> to create your first export.</p>
+        </div>
+
+        <!-- History table -->
+        <div class="table-wrap" id="history-table-wrap">
+          <table class="tc-table history-table">
+            <thead>
+              <tr>
+                <th style="width:220px">File Name</th>
+                <th style="width:160px">Created At</th>
+                <th style="width:70px">Count</th>
+                <th style="width:90px">Source</th>
+                <th style="width:120px">Module</th>
+                <th style="width:170px">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="history-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ── DETAIL MODAL ────────────────────────────────────────────────────────── -->
+<div class="modal-overlay hidden" id="modal-overlay" onclick="closeModal()">
+  <div class="modal" id="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div>
+        <span class="modal-id" id="modal-id"></span>
+        <span class="modal-priority-badge" id="modal-priority"></span>
+      </div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <h3 class="modal-title" id="modal-title"></h3>
+    <div class="modal-grid">
+      <div class="modal-section">
+        <h4>Preconditions</h4>
+        <p id="modal-pre"></p>
+      </div>
+      <div class="modal-section">
+        <h4>Steps to Reproduce</h4>
+        <ol id="modal-steps"></ol>
+      </div>
+      <div class="modal-section">
+        <h4>Expected Result</h4>
+        <p id="modal-expected"></p>
+      </div>
+      <div class="modal-section">
+        <h4>Tags</h4>
+        <div id="modal-tags" class="tag-row"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>
