@@ -1,12 +1,10 @@
 """
 Application configuration loaded from environment variables / .env file.
 """
+import os
 from typing import Optional
 
-try:
-    from pydantic_settings import BaseSettings
-except ImportError:
-    from pydantic import BaseSettings  # type: ignore
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -36,6 +34,11 @@ class Settings(BaseSettings):
     app_port: int = 8000
     debug: bool = True
     log_level: str = "INFO"
+
+    def model_post_init(self, __context: object) -> None:
+        render_port = os.getenv("PORT")
+        if render_port and not os.getenv("APP_PORT"):
+            self.app_port = int(render_port)
 
     class Config:
         env_file = ".env"
