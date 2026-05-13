@@ -30,15 +30,17 @@ class Settings(BaseSettings):
     auto_open_excel: bool = False
 
     # Application
-    app_host: str = "0.0.0.0"
+    app_host: str = "127.0.0.1"
     app_port: int = 8000
     debug: bool = True
     log_level: str = "INFO"
 
     def model_post_init(self, __context: object) -> None:
         render_port = os.getenv("PORT")
-        if render_port and not os.getenv("APP_PORT"):
-            self.app_port = int(render_port)
+        if render_port:
+            self.app_host = "0.0.0.0"
+            if not os.getenv("APP_PORT"):
+                self.app_port = int(render_port)
 
     class Config:
         env_file = ".env"
