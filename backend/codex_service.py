@@ -1,8 +1,9 @@
 import os
-from dotenv import load_dotenv
 from openai import OpenAI
 
-load_dotenv()
+from backend.config.env_loader import load_env_file
+
+load_env_file()
 
 client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY")

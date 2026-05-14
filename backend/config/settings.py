@@ -4,9 +4,9 @@ Application configuration loaded from environment variables / .env file.
 import os
 from typing import Optional
 
-from dotenv import load_dotenv
+from backend.config.env_loader import load_env_file
 
-load_dotenv()
+load_env_file()
 
 
 def _get_bool(name: str, default: bool) -> bool:

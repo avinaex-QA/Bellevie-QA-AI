@@ -9,11 +9,11 @@ import re
 import os
 from typing import List
 
-from dotenv import load_dotenv
 from openai import OpenAI
 from google import genai
 from google.genai import types
 
+from backend.config.env_loader import load_env_file
 from backend.models.schemas import TestCase, TestSummary
 from backend.utils.context_builder import build_context
 from backend.utils.deduplicator import deduplicate, renumber_ids
@@ -22,7 +22,7 @@ from backend.utils.logger import setup_logger
 logger = setup_logger(__name__)
 
 # ── ENV LOAD ──────────────────────────────────────────────────────────────
-load_dotenv()
+load_env_file()
 
 # ── AI Provider Selection ────────────────────────────────────────────────
 AI_PROVIDER = os.getenv("AI_PROVIDER", "groq").lower()
