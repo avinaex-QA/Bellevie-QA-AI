@@ -4,48 +4,54 @@ Application configuration loaded from environment variables / .env file.
 import os
 from typing import Optional
 
-from pydantic_settings import BaseSettings
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
-class Settings(BaseSettings):
-    # AI Provider
-    ai_provider: str = "gemini"
-    anthropic_api_key: Optional[str] = None
-    openai_api_key: Optional[str] = None
-    max_tokens: int = 8192
+def _get_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
-    # Jira
-    jira_base_url: Optional[str] = None
-    jira_email: Optional[str] = None
-    jira_api_token: Optional[str] = None
 
-    # GitHub
-    github_token: Optional[str] = None
+def _get_int(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    return int(value)
 
-    # Coverage-driven test generation
-    min_test_cases: int = 20        # only enforced when enable_min_limit=True
-    enable_min_limit: bool = False  # set to true to enforce minimum
 
-    # Excel auto-open (Windows only via os.startfile)
-    auto_open_excel: bool = False
+class Settings:
+    def __init__(self) -> None:
+        # AI Provider
+        self.ai_provider: str = os.getenv("AI_PROVIDER", "gemini")
+        self.anthropic_api_key: Optional[str] = os.getenv("ANTHROPIC_API_KEY")
+        self.openai_api_key: Optional[str] = os.getenv("OPENAI_API_KEY")
+        self.max_tokens: int = _get_int("MAX_TOKENS", 8192)
 
-    # Application
-    app_host: str = "127.0.0.1"
-    app_port: int = 8000
-    debug: bool = True
-    log_level: str = "INFO"
+        # Jira
+        self.jira_base_url: Optional[str] = os.getenv("JIRA_BASE_URL")
+        self.jira_email: Optional[str] = os.getenv("JIRA_EMAIL")
+        self.jira_api_token: Optional[str] = os.getenv("JIRA_API_TOKEN")
 
-    def model_post_init(self, __context: object) -> None:
+        # GitHub
+        self.github_token: Optional[str] = os.getenv("GITHUB_TOKEN")
+
+        # Coverage-driven test generation
+        self.min_test_cases: int = _get_int("MIN_TEST_CASES", 20)
+        self.enable_min_limit: bool = _get_bool("ENABLE_MIN_LIMIT", False)
+
+        # Excel auto-open (Windows only via os.startfile)
+        self.auto_open_excel: bool = _get_bool("AUTO_OPEN_EXCEL", False)
+
+        # Application
         render_port = os.getenv("PORT")
-        if render_port:
-            self.app_host = "0.0.0.0"
-            if not os.getenv("APP_PORT"):
-                self.app_port = int(render_port)
-
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
-        extra = "ignore"
+        self.app_host: str = "0.0.0.0" if render_port else os.getenv("APP_HOST", "127.0.0.1")
+        self.app_port: int = int(render_port) if render_port else _get_int("APP_PORT", 8000)
+        self.debug: bool = _get_bool("DEBUG", True)
+        self.log_level: str = os.getenv("LOG_LEVEL", "INFO")
 
 
 settings = Settings()
