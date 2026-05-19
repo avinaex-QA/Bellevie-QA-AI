@@ -164,6 +164,69 @@ body {
 }
 .form-textarea { min-height: 180px; }
 
+/* ── Project multiselect ───────────────────────────────────────────────── */
+.project-selector-group { position: relative; }
+.multiselect { position: relative; }
+.multiselect-control {
+  width: 100%; min-height: 42px; padding: 6px 10px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text-primary);
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  cursor: pointer; font-family: inherit; transition: border-color var(--transition), box-shadow var(--transition);
+}
+.multiselect-control:hover { border-color: var(--border-hi); }
+.multiselect.open .multiselect-control,
+.multiselect-control:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+  outline: none;
+}
+.selected-projects { display: flex; flex-wrap: wrap; gap: 5px; flex: 1; min-width: 0; }
+.multiselect-placeholder { color: var(--text-muted); font-size: 0.8rem; line-height: 1.8; }
+.multiselect-caret { color: var(--text-muted); font-size: 1rem; line-height: 1; transition: transform var(--transition); }
+.multiselect.open .multiselect-caret { transform: rotate(180deg); }
+.project-chip {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 100%;
+  padding: 3px 8px; border-radius: 12px; font-size: 0.68rem; font-weight: 600;
+  background: rgba(124, 58, 237, 0.14);
+  color: var(--accent-light); border: 1px solid rgba(124,58,237,0.32);
+}
+.project-chip button {
+  border: none; background: transparent; color: var(--text-muted);
+  cursor: pointer; font-size: 0.78rem; line-height: 1; padding: 0;
+}
+.project-chip button:hover { color: var(--text-primary); }
+.multiselect-menu {
+  position: absolute; z-index: 50; top: calc(100% + 6px); left: 0; right: 0;
+  background: var(--bg-card); border: 1px solid var(--border-hi);
+  border-radius: var(--radius); box-shadow: var(--shadow); padding: 8px;
+  animation: fadeIn 0.15s ease;
+}
+.multiselect-search {
+  width: 100%; padding: 8px 10px; margin-bottom: 6px;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text-primary);
+  font-family: inherit; font-size: 0.8rem; outline: none;
+}
+.multiselect-search:focus { border-color: var(--accent); }
+.multiselect-options { max-height: 210px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.project-option {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 9px; border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: var(--text-secondary);
+  cursor: pointer; font-family: inherit; font-size: 0.8rem; text-align: left;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+.project-option:hover { background: var(--bg-hover); color: var(--text-primary); }
+.project-option.selected {
+  color: var(--accent-light); border-color: rgba(124,58,237,0.28);
+  background: rgba(124, 58, 237, 0.1);
+}
+.option-check { color: var(--accent-light); font-weight: 700; }
+.project-helper-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.clear-projects-btn { white-space: nowrap; font-size: 0.7rem; }
+.form-hint.warning { color: var(--medium); }
+
 .input-with-btn { display: flex; gap: 6px; }
 .input-with-btn .form-input { flex: 1; }
 .btn-icon {
@@ -564,6 +627,14 @@ body {
   background: rgba(124,58,237,0.12); color: var(--accent-light);
   border: 1px solid rgba(124,58,237,0.25);
 }
+.history-projects {
+  display: flex; flex-wrap: wrap; gap: 4px;
+}
+.history-project-pill {
+  display: inline-block; padding: 1px 7px; border-radius: 8px; font-size: 0.65rem;
+  background: rgba(59, 130, 246, 0.1); color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.28);
+}
 
 /* ── Animations ─────────────────────────────────────────────────────────── */
 @keyframes fadeIn   { from { opacity: 0; }  to { opacity: 1; } }
@@ -576,4 +647,5 @@ body {
   .layout { grid-template-columns: 1fr; }
   .sidebar { max-height: none; position: static; border-right: none; border-bottom: 1px solid var(--border); }
   .feature-list { grid-template-columns: 1fr; }
+  .multiselect-menu { position: static; margin-top: 6px; }
 }

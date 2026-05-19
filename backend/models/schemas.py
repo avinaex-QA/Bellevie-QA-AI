@@ -53,6 +53,7 @@ class TestSummary(BaseModel):
 
 class GenerateRequest(BaseModel):
     source_type: SourceType
+    selected_projects: List[str] = Field(default_factory=list)
     jira_id: Optional[str] = None
     text_input: Optional[str] = None
     github_pr_url: Optional[str] = None
@@ -82,6 +83,7 @@ class JiraTicket(BaseModel):
 
 class ExportRequest(BaseModel):
     test_cases: List[TestCase]
+    selected_projects: List[str] = Field(default_factory=list)
     sheet_title: str = "Test Cases"
     project_name: str = "AI Generated Test Cases"
     source_type: str = "text"

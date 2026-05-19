@@ -11,11 +11,22 @@ const state = {
   currentFilter: 'all',
   searchQuery:   '',
   selectedFile:  null,
+  selectedProjects: [],
   isLoading:     false,
   currentView:   'testcases',  // 'testcases' | 'history'
   lastSummary:   null,
   lastSourceType: 'text',
+  lastSelectedProjects: [],
 };
+
+const PROJECT_OPTIONS = [
+  'Resident APP',
+  'Society Dashboard',
+  'VMS APP',
+  'Society Admin APP',
+  'Marketplace Brand Dashboard',
+  'Marketplace Master Dashboard',
+];
 
 // ── DOM refs ───────────────────────────────────────────────────────────────
 const $ = (id) => document.getElementById(id);
@@ -24,6 +35,14 @@ const els = {
   generateBtn:    $('generate-btn'),
   btnText:        $('btn-text'),
   btnIcon:        $('btn-icon'),
+  projectMultiselect: $('project-multiselect'),
+  projectToggle:  $('project-toggle'),
+  projectMenu:    $('project-menu'),
+  projectSearch:  $('project-search'),
+  projectOptions: $('project-options'),
+  selectedProjects: $('selected-projects'),
+  projectHelper:  $('project-helper'),
+  clearProjectsBtn: $('clear-projects-btn'),
   jiraId:         $('jira-id'),
   fetchJiraBtn:   $('fetch-jira-btn'),
   jiraPreview:    $('jira-preview'),
@@ -126,6 +145,120 @@ function toggleHistoryPanel() {
   switchView('history');
 }
 
+// ── Project Multiselect ──────────────────────────────────────────────────
+function hasRequirementSource() {
+  return !!(
+    els.jiraId.value.trim() ||
+    els.textInput.value.trim() ||
+    els.githubUrl.value.trim() ||
+    state.selectedFile
+  );
+}
+
+function updateGenerateButton() {
+  const hasProjects = state.selectedProjects.length > 0;
+  const hasSource = hasRequirementSource();
+  const canGenerate = hasProjects && hasSource && !state.isLoading;
+
+  els.generateBtn.disabled = !canGenerate;
+  els.generateBtn.title = canGenerate ? 'Generate test cases' : 'Select project and requirement source';
+
+  if (!hasProjects) {
+    els.projectHelper.textContent = 'Select at least one project before generation.';
+    els.projectHelper.classList.add('warning');
+  } else if (!hasSource) {
+    els.projectHelper.textContent = 'Please select a requirement source (Jira, Text, Document, or GitHub PR) along with Project selection.';
+    els.projectHelper.classList.add('warning');
+  } else {
+    els.projectHelper.textContent = 'Project context will guide AI coverage for the selected source.';
+    els.projectHelper.classList.remove('warning');
+  }
+}
+
+function openProjectMenu() {
+  els.projectMenu.classList.remove('hidden');
+  els.projectMultiselect.classList.add('open');
+  els.projectToggle.setAttribute('aria-expanded', 'true');
+  els.projectSearch.focus();
+}
+
+function closeProjectMenu() {
+  els.projectMenu.classList.add('hidden');
+  els.projectMultiselect.classList.remove('open');
+  els.projectToggle.setAttribute('aria-expanded', 'false');
+}
+
+function toggleProjectMenu() {
+  if (els.projectMenu.classList.contains('hidden')) openProjectMenu();
+  else closeProjectMenu();
+}
+
+function toggleProjectSelection(project) {
+  if (state.selectedProjects.includes(project)) {
+    state.selectedProjects = state.selectedProjects.filter((item) => item !== project);
+  } else {
+    state.selectedProjects = [...state.selectedProjects, project];
+  }
+  renderProjectSelector();
+  updateGenerateButton();
+}
+
+function removeProject(project, event) {
+  event.stopPropagation();
+  state.selectedProjects = state.selectedProjects.filter((item) => item !== project);
+  renderProjectSelector();
+  updateGenerateButton();
+}
+
+function clearProjects() {
+  state.selectedProjects = [];
+  els.projectSearch.value = '';
+  renderProjectSelector();
+  updateGenerateButton();
+}
+
+function renderProjectSelector() {
+  if (!state.selectedProjects.length) {
+    els.selectedProjects.innerHTML = '<span class="multiselect-placeholder">Search and select project context...</span>';
+  } else {
+    els.selectedProjects.innerHTML = state.selectedProjects.map((project) => `
+      <span class="project-chip">
+        ${escapeHtml(project)}
+        <button type="button" onclick="removeProject('${escapeHtml(project)}', event)" title="Remove ${escapeHtml(project)}">×</button>
+      </span>
+    `).join('');
+  }
+
+  const query = els.projectSearch.value.trim().toLowerCase();
+  const options = PROJECT_OPTIONS.filter((project) => project.toLowerCase().includes(query));
+  els.projectOptions.innerHTML = options.length
+    ? options.map((project) => {
+        const selected = state.selectedProjects.includes(project);
+        return `
+          <button class="project-option ${selected ? 'selected' : ''}" type="button" data-project="${escapeHtml(project)}">
+            <span>${escapeHtml(project)}</span>
+            <span class="option-check">${selected ? '✓' : ''}</span>
+          </button>`;
+      }).join('')
+    : '<div class="project-option" style="cursor:default;">No matching projects</div>';
+
+  els.clearProjectsBtn.classList.toggle('hidden', state.selectedProjects.length === 0);
+}
+
+els.projectToggle.addEventListener('click', toggleProjectMenu);
+els.projectSearch.addEventListener('input', renderProjectSelector);
+els.clearProjectsBtn.addEventListener('click', clearProjects);
+els.projectOptions.addEventListener('click', (event) => {
+  const option = event.target.closest('.project-option[data-project]');
+  if (option) toggleProjectSelection(option.dataset.project);
+});
+document.addEventListener('click', (event) => {
+  if (!els.projectMultiselect.contains(event.target)) closeProjectMenu();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeProjectMenu();
+});
+
 // ── Tab Switching (Input Sources) ─────────────────────────────────────────
 document.querySelectorAll('.tab-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -140,7 +273,11 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
 // ── Character Count ───────────────────────────────────────────────────────
 els.textInput.addEventListener('input', () => {
   els.charCount.textContent = els.textInput.value.length.toLocaleString();
+  updateGenerateButton();
 });
+els.jiraId.addEventListener('input', updateGenerateButton);
+els.githubUrl.addEventListener('input', updateGenerateButton);
+els.additionalCtx.addEventListener('input', updateGenerateButton);
 
 // ── File Upload / Dropzone ────────────────────────────────────────────────
 els.dropzone.addEventListener('click', (e) => {
@@ -170,6 +307,7 @@ function handleFileSelected(file) {
     <button class="file-badge-remove" onclick="clearFile()" title="Remove file">✕</button>`;
   els.fileSelected.classList.remove('hidden');
   els.dropzone.querySelector('.dropzone-text').textContent = 'File ready';
+  updateGenerateButton();
 }
 
 function clearFile() {
@@ -177,6 +315,7 @@ function clearFile() {
   els.fileInput.value = '';
   els.fileSelected.classList.add('hidden');
   els.dropzone.querySelector('.dropzone-text').textContent = 'Drag & drop your file here';
+  updateGenerateButton();
 }
 
 // ── Jira Preview ──────────────────────────────────────────────────────────
@@ -214,8 +353,15 @@ async function handleGenerate() {
   const addCtx    = els.additionalCtx.value.trim();
   const hasFile   = !!state.selectedFile;
 
+  if (!state.selectedProjects.length) {
+    showToast('Please select at least one project.', 'error');
+    updateGenerateButton();
+    return;
+  }
+
   if (!jiraId && !textInput && !githubUrl && !hasFile) {
-    showToast('Provide at least one input: Jira ID, document, text, or GitHub PR URL.', 'error');
+    showToast('Please select a requirement source (Jira, Text, Document, or GitHub PR) along with Project selection.', 'error');
+    updateGenerateButton();
     return;
   }
 
@@ -225,6 +371,7 @@ async function handleGenerate() {
 
   try {
     const formData = new FormData();
+    state.selectedProjects.forEach((project) => formData.append('selected_projects', project));
     if (jiraId)    formData.append('jira_id', jiraId);
     if (textInput) formData.append('text_input', textInput);
     if (githubUrl) formData.append('github_pr_url', githubUrl);
@@ -239,6 +386,7 @@ async function handleGenerate() {
     const sourceType = sourceTypes[0] || 'text';
     formData.append('source_type', sourceType);
     state.lastSourceType = sourceType;
+    state.lastSelectedProjects = [...state.selectedProjects];
 
     const res = await fetch(`${API_BASE}/api/generate`, { method: 'POST', body: formData });
 
@@ -250,6 +398,7 @@ async function handleGenerate() {
     const data = await res.json();
     state.testCases  = data.test_cases;
     state.lastSummary = data.summary;
+    state.lastSelectedProjects = data.source_info?.selected_projects || [...state.selectedProjects];
 
     renderResults(data);
     showPanel('results');
@@ -405,6 +554,7 @@ async function downloadExcel() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         test_cases: state.testCases,
+        selected_projects: state.lastSelectedProjects,
         project_name: 'AI Generated Test Cases',
         sheet_title: 'Test Cases',
         source_type: state.lastSourceType || 'text',
@@ -490,6 +640,7 @@ function renderHistoryTable(exports) {
       <td style="font-family:monospace;font-size:0.75rem;color:var(--accent-light);">${escapeHtml(entry.file_name)}</td>
       <td style="font-size:0.78rem;color:var(--text-secondary);">${escapeHtml(createdAt)}</td>
       <td style="text-align:center;font-weight:700;color:var(--accent-light);">${entry.count}</td>
+      <td><div class="history-projects">${renderHistoryProjects(entry.selected_projects)}</div></td>
       <td><span class="source-badge">${escapeHtml(entry.source || 'text')}</span></td>
       <td style="font-size:0.78rem;color:var(--text-secondary);">${escapeHtml(entry.module || 'General')}</td>
       <td>
@@ -505,6 +656,11 @@ function renderHistoryTable(exports) {
     frag.appendChild(tr);
   });
   els.historyTbody.appendChild(frag);
+}
+
+function renderHistoryProjects(projects) {
+  if (!projects || !projects.length) return '<span style="color:var(--text-muted);">—</span>';
+  return projects.map((project) => `<span class="history-project-pill">${escapeHtml(project)}</span>`).join('');
 }
 
 async function downloadHistoryFile(filename) {
@@ -587,6 +743,7 @@ function setLoading(loading) {
   } else {
     els.btnIcon.innerHTML = `<path d="M13 10V3L4 14h7v7l9-11h-7z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
     els.btnText.textContent = 'Generate Test Cases';
+    updateGenerateButton();
   }
 }
 
@@ -623,6 +780,8 @@ function escapeHtml(str) {
 // ── Init ──────────────────────────────────────────────────────────────────
 (function init() {
   showPanel('empty');
+  renderProjectSelector();
+  updateGenerateButton();
   checkHealth();
   // Load initial history count for the badge
   apiGet('/api/export/history').then((data) => {

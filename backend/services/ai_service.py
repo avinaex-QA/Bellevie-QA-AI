@@ -14,6 +14,7 @@ from google import genai
 from google.genai import types
 
 from backend.config.env_loader import load_env_file
+from backend.config.project_context import build_project_context_section
 from backend.models.schemas import TestCase, TestSummary
 from backend.utils.context_builder import build_context
 from backend.utils.deduplicator import deduplicate, renumber_ids
@@ -284,6 +285,7 @@ async def generate_test_cases(
     source_type: str = "text",
     additional_context: str = "",
     module: str | None = None,
+    selected_projects: list[str] | None = None,
 ):
     enriched_requirements, detected_module = build_context(
         requirements=requirements,
@@ -292,7 +294,10 @@ async def generate_test_cases(
         additional_context=additional_context,
     )
 
-    extra = f"Additional context: {additional_context}" if additional_context else ""
+    extra_parts = [build_project_context_section(selected_projects or [])]
+    if additional_context:
+        extra_parts.append(f"Additional context: {additional_context}")
+    extra = "\n\n".join(extra_parts)
 
     prompt = _PROMPT_TEMPLATE.format(
         requirements=enriched_requirements,

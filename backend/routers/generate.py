@@ -6,6 +6,7 @@ from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
+from backend.config.project_context import normalize_selected_projects
 from backend.models.schemas import GenerateResponse, TestSummary
 from backend.services.ai_service import generate_test_cases
 from backend.services.document_service import extract_text_from_upload
@@ -17,8 +18,28 @@ logger = setup_logger(__name__)
 router = APIRouter()
 
 
+def _friendly_ai_error(error: Exception) -> str:
+    raw = str(error)
+    lowered = raw.lower()
+
+    if "invalid_api_key" in lowered or "invalid api key" in lowered or "401" in lowered:
+        return (
+            "AI provider authentication failed. Please verify the configured API key "
+            "for the selected AI provider and restart the server."
+        )
+
+    if "api_key not configured" in lowered:
+        return (
+            "AI provider API key is not configured. Please add the required key in "
+            "your environment settings and restart the server."
+        )
+
+    return f"AI test case generation failed: {raw}"
+
+
 @router.post("/generate", response_model=GenerateResponse)
 async def generate(
+    selected_projects: list[str] = Form(default=[]),
     jira_id: Optional[str] = Form(None),
     text_input: Optional[str] = Form(None),
     github_pr_url: Optional[str] = Form(None),
@@ -32,6 +53,11 @@ async def generate(
     requirement_parts: list[str] = []
     source_info: dict = {}
     source_types: list[str] = []
+
+    try:
+        selected_projects = normalize_selected_projects(selected_projects)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     # ── 1. Jira ticket ─────────────────────────────────────────────────────
     if jira_id and jira_id.strip():
@@ -96,7 +122,7 @@ async def generate(
     if not requirement_parts:
         raise HTTPException(
             status_code=400,
-            detail="Please provide at least one input: Jira ID, document, text, or GitHub PR URL."
+            detail="Please select a requirement source (Jira, Text, Document, or GitHub PR) along with Project selection."
         )
 
     # ── Combine all sources and generate ─────────────────────────────────
@@ -108,6 +134,7 @@ async def generate(
             requirements=combined_requirements,
             source_type=source_type,
             additional_context=additional_context or "",
+            selected_projects=selected_projects,
         )
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -115,13 +142,13 @@ async def generate(
         logger.error(f"AI generation error: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"AI test case generation failed: {str(e)}"
+            detail=_friendly_ai_error(e)
         )
 
     return GenerateResponse(
         success=True,
         test_cases=test_cases,
         summary=summary,
-        source_info=source_info,
+        source_info={**source_info, "selected_projects": selected_projects},
         message=f"Successfully generated {summary.total} test cases from {', '.join(source_types)}.",
     )

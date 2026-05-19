@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional
 
+from backend.config.project_context import normalize_selected_projects
 from backend.models.schemas import ExportRequest, TestCase
 from backend.services.excel_service import (
     EXPORTS_DIR,
@@ -38,8 +39,14 @@ async def export_to_excel(request: ExportRequest):
         raise HTTPException(status_code=400, detail="No test cases provided for export.")
 
     try:
+        selected_projects = normalize_selected_projects(request.selected_projects)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    try:
         excel_bytes, file_name = generate_excel(
             test_cases=request.test_cases,
+            selected_projects=selected_projects,
             project_name=request.project_name,
             sheet_title=request.sheet_title,
             source_type=getattr(request, "source_type", "text"),

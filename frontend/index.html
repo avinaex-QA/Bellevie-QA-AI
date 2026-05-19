@@ -37,6 +37,36 @@
       <p class="sidebar-sub">Provide one or more requirement sources</p>
     </div>
 
+    <!-- Project Context Selector -->
+    <div class="form-group project-selector-group">
+      <label class="form-label" for="project-search">
+        Select Project
+        <span class="label-hint">Required</span>
+      </label>
+      <div class="multiselect" id="project-multiselect">
+        <button class="multiselect-control" id="project-toggle" type="button" aria-expanded="false">
+          <div class="selected-projects" id="selected-projects">
+            <span class="multiselect-placeholder">Search and select project context...</span>
+          </div>
+          <span class="multiselect-caret">⌄</span>
+        </button>
+        <div class="multiselect-menu hidden" id="project-menu">
+          <input
+            type="text"
+            id="project-search"
+            class="multiselect-search"
+            placeholder="Search projects..."
+            autocomplete="off"
+          />
+          <div class="multiselect-options" id="project-options"></div>
+        </div>
+      </div>
+      <div class="project-helper-row">
+        <span id="project-helper" class="form-hint">Project context guides AI coverage and must be combined with a requirement source.</span>
+        <button class="link-btn clear-projects-btn hidden" id="clear-projects-btn" type="button">Clear</button>
+      </div>
+    </div>
+
     <!-- Source Tabs -->
     <div class="source-tabs">
       <button class="tab-btn active" data-tab="jira">
@@ -319,11 +349,12 @@
         <!-- History table -->
         <div class="table-wrap" id="history-table-wrap">
           <table class="tc-table history-table">
-            <thead>
+          <thead>
               <tr>
                 <th style="width:220px">File Name</th>
                 <th style="width:160px">Created At</th>
                 <th style="width:70px">Count</th>
+                <th style="width:180px">Project Context</th>
                 <th style="width:90px">Source</th>
                 <th style="width:120px">Module</th>
                 <th style="width:170px">Actions</th>
