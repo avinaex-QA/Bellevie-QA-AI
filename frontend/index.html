@@ -67,6 +67,36 @@
       </div>
     </div>
 
+    <!-- Module Context Selector -->
+    <div class="form-group project-selector-group">
+      <label class="form-label" for="module-search">
+        Select Module
+        <span class="label-hint">Required</span>
+      </label>
+      <div class="multiselect" id="module-multiselect">
+        <button class="multiselect-control" id="module-toggle" type="button" aria-expanded="false">
+          <div class="selected-projects" id="selected-modules">
+            <span class="multiselect-placeholder">Search and select module context...</span>
+          </div>
+          <span class="multiselect-caret">⌄</span>
+        </button>
+        <div class="multiselect-menu hidden" id="module-menu">
+          <input
+            type="text"
+            id="module-search"
+            class="multiselect-search"
+            placeholder="Search modules..."
+            autocomplete="off"
+          />
+          <div class="multiselect-options" id="module-options"></div>
+        </div>
+      </div>
+      <div class="project-helper-row">
+        <span id="module-helper" class="form-hint">Select project and module context to generate more accurate domain-specific test cases.</span>
+        <button class="link-btn clear-projects-btn hidden" id="clear-modules-btn" type="button">Clear</button>
+      </div>
+    </div>
+
     <!-- Source Tabs -->
     <div class="source-tabs">
       <button class="tab-btn active" data-tab="jira">
@@ -303,6 +333,7 @@
           <thead>
             <tr>
               <th class="col-id">ID</th>
+              <th class="col-status">Execution</th>
               <th class="col-priority">Priority</th>
               <th class="col-type">Type</th>
               <th class="col-tags">Tags</th>
@@ -311,6 +342,7 @@
               <th class="col-steps">Steps</th>
               <th class="col-expected">Expected Result</th>
               <th class="col-actual">Actual Result</th>
+              <th class="col-bug">Bug</th>
             </tr>
           </thead>
           <tbody id="tc-tbody"></tbody>
@@ -355,6 +387,7 @@
                 <th style="width:160px">Created At</th>
                 <th style="width:70px">Count</th>
                 <th style="width:180px">Project Context</th>
+                <th style="width:180px">Module Context</th>
                 <th style="width:90px">Source</th>
                 <th style="width:120px">Module</th>
                 <th style="width:170px">Actions</th>
@@ -396,6 +429,49 @@
         <h4>Tags</h4>
         <div id="modal-tags" class="tag-row"></div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── RAISE BUG MODAL ─────────────────────────────────────────────────────── -->
+<div class="modal-overlay hidden" id="bug-modal-overlay" onclick="closeBugModal()">
+  <div class="modal bug-modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div>
+        <span class="modal-id" id="bug-modal-tc-id"></span>
+        <span class="modal-priority-badge priority-badge Medium" id="bug-modal-severity-badge">Medium</span>
+      </div>
+      <button class="modal-close" onclick="closeBugModal()">✕</button>
+    </div>
+    <h3 class="modal-title">Raise Jira Bug</h3>
+    <div class="bug-form-grid">
+      <label class="bug-field full"><span>Bug Summary *</span><input id="bug-summary" class="form-input" /></label>
+      <label class="bug-field full"><span>Description *</span><textarea id="bug-description" class="form-textarea bug-textarea"></textarea></label>
+      <label class="bug-field full"><span>Steps to Reproduce *</span><textarea id="bug-steps" class="form-textarea bug-textarea"></textarea></label>
+      <label class="bug-field"><span>Actual Result *</span><textarea id="bug-actual" class="form-textarea bug-textarea"></textarea></label>
+      <label class="bug-field"><span>Expected Result *</span><textarea id="bug-expected" class="form-textarea bug-textarea"></textarea></label>
+      <label class="bug-field"><span>Severity *</span><select id="bug-severity" class="form-input"><option>Low</option><option selected>Medium</option><option>High</option><option>Critical</option></select></label>
+      <label class="bug-field"><span>Environment *</span><input id="bug-environment" class="form-input" value="QA" /></label>
+      <label class="bug-field"><span>Project *</span><input id="bug-project" class="form-input" /></label>
+      <label class="bug-field"><span>Module *</span><input id="bug-module" class="form-input" /></label>
+      <label class="bug-field"><span>Classification *</span><input id="bug-classification" class="form-input" value="Functionality" /></label>
+      <label class="bug-field"><span>Type *</span><select id="bug-type" class="form-input"><option>Backend</option><option>Frontend</option><option>Mobile</option><option>API</option></select></label>
+      <label class="bug-field"><span>Device Type *</span><select id="bug-device-type" class="form-input"><option>Web</option><option>Mobile</option><option>Tablet</option><option>API</option></select></label>
+      <label class="bug-field"><span>Impacted Areas</span><input id="bug-impacted" class="form-input" /></label>
+      <label class="bug-field"><span>App Version</span><input id="bug-app-version" class="form-input" /></label>
+      <label class="bug-field"><span>Vertical</span><input id="bug-vertical" class="form-input" /></label>
+      <label class="bug-field"><span>Reviewer</span><input id="bug-reviewer" class="form-input" /></label>
+      <label class="bug-field"><span>Sprint</span><input id="bug-sprint" class="form-input" /></label>
+      <label class="bug-field full"><span>Additional Notes</span><textarea id="bug-additional-notes" class="form-textarea bug-textarea"></textarea></label>
+      <label class="bug-field full"><span>Likely Root Cause</span><textarea id="bug-root-cause" class="form-textarea bug-textarea"></textarea></label>
+      <div class="bug-field full">
+        <span>Attachments</span>
+        <div class="form-hint">Future ready. Attachments are not uploaded in this version.</div>
+      </div>
+    </div>
+    <div class="bug-modal-actions">
+      <button class="btn-secondary" onclick="closeBugModal()">Cancel</button>
+      <button class="btn-primary" id="submit-bug-btn" onclick="submitJiraBug()">Create Jira Bug</button>
     </div>
   </div>
 </div>

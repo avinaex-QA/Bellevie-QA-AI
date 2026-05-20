@@ -26,16 +26,19 @@ def test_excel_export_includes_project_context_and_history(tmp_path, monkeypatch
             )
         ],
         selected_projects=["Resident APP", "VMS APP"],
+        selected_modules=["Onboarding", "VMS"],
         source_type="text",
         module_detected="Login",
     )
 
     workbook = load_workbook(io.BytesIO(raw_bytes))
     info_sheet = workbook["Project Info"]
-    metadata = {info_sheet.cell(row=row, column=1).value: info_sheet.cell(row=row, column=2).value for row in range(2, 11)}
+    metadata = {info_sheet.cell(row=row, column=1).value: info_sheet.cell(row=row, column=2).value for row in range(2, 12)}
 
     assert metadata["Project Context"] == "Resident APP, VMS APP"
+    assert metadata["Module Context"] == "Onboarding, VMS"
     assert (tmp_path / "exports" / file_name).exists()
 
     history = json.loads((tmp_path / "exports" / "history.json").read_text(encoding="utf-8"))
     assert history["exports"][0]["selected_projects"] == ["Resident APP", "VMS APP"]
+    assert history["exports"][0]["selected_modules"] == ["Onboarding", "VMS"]

@@ -6,7 +6,7 @@ from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
-from backend.config.project_context import normalize_selected_projects
+from backend.config.project_context import normalize_selected_modules, normalize_selected_projects
 from backend.models.schemas import GenerateResponse, TestSummary
 from backend.services.ai_service import generate_test_cases
 from backend.services.document_service import extract_text_from_upload
@@ -40,6 +40,7 @@ def _friendly_ai_error(error: Exception) -> str:
 @router.post("/generate", response_model=GenerateResponse)
 async def generate(
     selected_projects: list[str] = Form(default=[]),
+    selected_modules: list[str] = Form(default=[]),
     jira_id: Optional[str] = Form(None),
     text_input: Optional[str] = Form(None),
     github_pr_url: Optional[str] = Form(None),
@@ -56,6 +57,7 @@ async def generate(
 
     try:
         selected_projects = normalize_selected_projects(selected_projects)
+        selected_modules = normalize_selected_modules(selected_modules)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -122,7 +124,7 @@ async def generate(
     if not requirement_parts:
         raise HTTPException(
             status_code=400,
-            detail="Please select a requirement source (Jira, Text, Document, or GitHub PR) along with Project selection."
+            detail="Please select Project, Module, and at least one requirement source (Jira, Text, Document, or GitHub PR)."
         )
 
     # ── Combine all sources and generate ─────────────────────────────────
@@ -135,6 +137,7 @@ async def generate(
             source_type=source_type,
             additional_context=additional_context or "",
             selected_projects=selected_projects,
+            selected_modules=selected_modules,
         )
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -149,6 +152,10 @@ async def generate(
         success=True,
         test_cases=test_cases,
         summary=summary,
-        source_info={**source_info, "selected_projects": selected_projects},
+        source_info={
+            **source_info,
+            "selected_projects": selected_projects,
+            "selected_modules": selected_modules,
+        },
         message=f"Successfully generated {summary.total} test cases from {', '.join(source_types)}.",
     )

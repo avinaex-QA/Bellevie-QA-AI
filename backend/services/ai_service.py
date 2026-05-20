@@ -14,8 +14,8 @@ from google import genai
 from google.genai import types
 
 from backend.config.env_loader import load_env_file
-from backend.config.project_context import build_project_context_section
-from backend.models.schemas import TestCase, TestSummary
+from backend.config.project_context import build_context_section, build_project_context_section
+from backend.models.schemas import BugDraftRequest, BugDraftResponse, TestCase, TestSummary
 from backend.utils.context_builder import build_context
 from backend.utils.deduplicator import deduplicate, renumber_ids
 from backend.utils.logger import setup_logger
@@ -279,6 +279,115 @@ def _parse_response(raw: str):
     return test_cases, summary
 
 
+def _infer_bug_type(test_case: TestCase, projects: list[str], modules: list[str]) -> str:
+    haystack = " ".join([test_case.title, test_case.test_type, *test_case.tags, *projects, *modules]).lower()
+    if "api" in haystack or "backend" in haystack:
+        return "API" if "api" in haystack else "Backend"
+    if "mobile" in haystack or "app" in haystack or "resident app" in haystack or "vms app" in haystack:
+        return "Mobile"
+    return "Frontend"
+
+
+def _infer_device_type(projects: list[str]) -> str:
+    joined = " ".join(projects).lower()
+    if "app" in joined:
+        return "Mobile"
+    return "Web"
+
+
+def _infer_vertical(projects: list[str]) -> str:
+    joined = " ".join(projects).lower()
+    if "marketplace" in joined:
+        return "Marketplace"
+    return "Residential"
+
+
+def _fallback_bug_draft(request: BugDraftRequest) -> BugDraftResponse:
+    test_case = request.test_case
+    projects = request.selected_projects
+    modules = request.selected_modules
+    module_text = ", ".join(modules)
+    project_text = ", ".join(projects)
+    notes = request.execution_notes or request.tester_notes or test_case.actual_result or "Observed behavior did not match expected result."
+
+    return BugDraftResponse(
+        bug_summary=f"{project_text}: {test_case.title}",
+        description=(
+            f"Failure observed while executing test case {test_case.id}: {test_case.title}.\n"
+            f"Project Context: {project_text}\nModule Context: {module_text}"
+        ),
+        steps_to_reproduce=test_case.steps,
+        actual_result=notes,
+        expected_result=test_case.expected_result,
+        severity="Medium",
+        environment="QA",
+        project=project_text,
+        module=module_text,
+        classification="Functionality",
+        type=_infer_bug_type(test_case, projects, modules),
+        device_type=_infer_device_type(projects),
+        impacted_areas=module_text,
+        vertical=_infer_vertical(projects),
+        additional_notes=request.tester_notes,
+    )
+
+
+def _parse_bug_draft(raw: str, fallback: BugDraftResponse) -> BugDraftResponse:
+    cleaned = _strip_markdown(raw)
+    try:
+        data = json.loads(cleaned)
+    except json.JSONDecodeError:
+        match = re.search(r"\{[\s\S]*\}", cleaned)
+        if not match:
+            return fallback
+        data = json.loads(match.group())
+
+    merged = fallback.model_dump()
+    for key, value in data.items():
+        if key in merged and value not in (None, ""):
+            merged[key] = value
+    if isinstance(merged.get("steps_to_reproduce"), str):
+        merged["steps_to_reproduce"] = _normalize_steps(merged["steps_to_reproduce"])
+    return BugDraftResponse(**merged)
+
+
+async def generate_bug_draft(request: BugDraftRequest) -> BugDraftResponse:
+    fallback = _fallback_bug_draft(request)
+    context = build_context_section(request.selected_projects, request.selected_modules)
+    test_case = request.test_case
+
+    prompt = f"""
+Create a concise Jira Bug draft for Bellevie QA from this failed test case.
+Return ONLY valid JSON with these keys:
+bug_summary, description, steps_to_reproduce, actual_result, expected_result,
+severity, environment, project, module, classification, type, device_type,
+impacted_areas, app_version, vertical, reviewer, sprint, additional_notes,
+likely_root_cause.
+
+{context}
+
+Test Case:
+ID: {test_case.id}
+Title: {test_case.title}
+Type: {test_case.test_type}
+Priority: {test_case.priority}
+Preconditions: {test_case.preconditions}
+Steps: {json.dumps(test_case.steps)}
+Expected Result: {test_case.expected_result}
+
+Failure Notes:
+Execution notes: {request.execution_notes or test_case.execution_notes}
+Tester notes: {request.tester_notes or test_case.tester_comments}
+Source context: {json.dumps(request.source_info)[:1200]}
+"""
+    try:
+        raw = await asyncio.to_thread(_call_ai_sync, prompt)
+        return _parse_bug_draft(raw, fallback)
+    except Exception as e:
+        logger.warning(f"AI bug draft fallback used: {e}")
+        return fallback
+
+
 # ── Public API ──────────────────────────────────────────────────────────
 async def generate_test_cases(
     requirements: str,
@@ -286,6 +395,7 @@ async def generate_test_cases(
     additional_context: str = "",
     module: str | None = None,
     selected_projects: list[str] | None = None,
+    selected_modules: list[str] | None = None,
 ):
     enriched_requirements, detected_module = build_context(
         requirements=requirements,
@@ -294,7 +404,10 @@ async def generate_test_cases(
         additional_context=additional_context,
     )
 
-    extra_parts = [build_project_context_section(selected_projects or [])]
+    if selected_modules:
+        extra_parts = [build_context_section(selected_projects or [], selected_modules)]
+    else:
+        extra_parts = [build_project_context_section(selected_projects or [])]
     if additional_context:
         extra_parts.append(f"Additional context: {additional_context}")
     extra = "\n\n".join(extra_parts)

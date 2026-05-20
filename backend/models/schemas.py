@@ -31,6 +31,14 @@ class TestType(str, Enum):
     EDGE_CASE = "Edge Case"
 
 
+class ExecutionStatus(str, Enum):
+    NOT_EXECUTED = "Not Executed"
+    PASSED = "Passed"
+    FAILED = "Failed"
+    BLOCKED = "Blocked"
+    SKIPPED = "Skipped"
+
+
 class TestCase(BaseModel):
     id: str = Field(..., description="Unique test case ID, e.g. TC-001")
     priority: str = Field(..., description="High, Medium, or Low")
@@ -41,6 +49,11 @@ class TestCase(BaseModel):
     actual_result: str = Field(default="", description="Left blank for manual execution")
     tags: List[str] = Field(default_factory=list, description="e.g. Smoke, Regression, Sanity")
     test_type: str = Field(default="Functional", description="Category of test")
+    status: str = Field(default=ExecutionStatus.NOT_EXECUTED.value)
+    execution_notes: str = ""
+    tester_comments: str = ""
+    jira_bug_id: str = ""
+    jira_bug_url: str = ""
 
 
 class TestSummary(BaseModel):
@@ -54,6 +67,7 @@ class TestSummary(BaseModel):
 class GenerateRequest(BaseModel):
     source_type: SourceType
     selected_projects: List[str] = Field(default_factory=list)
+    selected_modules: List[str] = Field(default_factory=list)
     jira_id: Optional[str] = None
     text_input: Optional[str] = None
     github_pr_url: Optional[str] = None
@@ -84,10 +98,55 @@ class JiraTicket(BaseModel):
 class ExportRequest(BaseModel):
     test_cases: List[TestCase]
     selected_projects: List[str] = Field(default_factory=list)
+    selected_modules: List[str] = Field(default_factory=list)
     sheet_title: str = "Test Cases"
     project_name: str = "AI Generated Test Cases"
     source_type: str = "text"
     module_detected: str = "General"
+
+
+class BugDraftRequest(BaseModel):
+    test_case: TestCase
+    selected_projects: List[str] = Field(default_factory=list)
+    selected_modules: List[str] = Field(default_factory=list)
+    execution_notes: str = ""
+    tester_notes: str = ""
+    source_info: Dict[str, Any] = Field(default_factory=dict)
+
+
+class BugDraftResponse(BaseModel):
+    bug_summary: str
+    description: str
+    steps_to_reproduce: List[str]
+    actual_result: str
+    expected_result: str
+    severity: str = "Medium"
+    environment: str = "QA"
+    project: str = ""
+    module: str = ""
+    classification: str = "Functionality"
+    type: str = "Frontend"
+    device_type: str = "Web"
+    impacted_areas: str = ""
+    app_version: str = ""
+    vertical: str = ""
+    reviewer: str = ""
+    sprint: str = ""
+    additional_notes: str = ""
+    likely_root_cause: str = ""
+
+
+class JiraBugCreateRequest(BugDraftResponse):
+    test_case_id: str
+    source_issue_key: Optional[str] = None
+    attachments: List[str] = Field(default_factory=list)
+
+
+class JiraBugCreateResponse(BaseModel):
+    success: bool
+    issue_key: str
+    issue_url: str
+    message: str
 
 
 class ErrorResponse(BaseModel):

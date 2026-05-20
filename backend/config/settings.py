@@ -35,6 +35,7 @@ class Settings:
         self.jira_base_url: Optional[str] = os.getenv("JIRA_BASE_URL")
         self.jira_email: Optional[str] = os.getenv("JIRA_EMAIL")
         self.jira_api_token: Optional[str] = os.getenv("JIRA_API_TOKEN")
+        self.jira_bug_project_key: Optional[str] = os.getenv("JIRA_BUG_PROJECT_KEY") or os.getenv("JIRA_DEFAULT_PROJECT_KEY")
 
         # GitHub
         self.github_token: Optional[str] = os.getenv("GITHUB_TOKEN")

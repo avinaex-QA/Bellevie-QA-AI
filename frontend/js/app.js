@@ -12,11 +12,15 @@ const state = {
   searchQuery:   '',
   selectedFile:  null,
   selectedProjects: [],
+  selectedModules: [],
   isLoading:     false,
   currentView:   'testcases',  // 'testcases' | 'history'
   lastSummary:   null,
   lastSourceType: 'text',
   lastSelectedProjects: [],
+  lastSelectedModules: [],
+  lastSourceInfo: {},
+  activeBugTestCaseId: null,
 };
 
 const PROJECT_OPTIONS = [
@@ -26,6 +30,18 @@ const PROJECT_OPTIONS = [
   'Society Admin APP',
   'Marketplace Brand Dashboard',
   'Marketplace Master Dashboard',
+];
+
+const MODULE_OPTIONS = [
+  'Onboarding',
+  'Ticket',
+  'Notice',
+  'Event',
+  'Amenity',
+  'Billing & Account',
+  'VMS',
+  'Documents',
+  'Marketplace',
 ];
 
 // ── DOM refs ───────────────────────────────────────────────────────────────
@@ -43,6 +59,14 @@ const els = {
   selectedProjects: $('selected-projects'),
   projectHelper:  $('project-helper'),
   clearProjectsBtn: $('clear-projects-btn'),
+  moduleMultiselect: $('module-multiselect'),
+  moduleToggle:   $('module-toggle'),
+  moduleMenu:     $('module-menu'),
+  moduleSearch:   $('module-search'),
+  moduleOptions:  $('module-options'),
+  selectedModules: $('selected-modules'),
+  moduleHelper:   $('module-helper'),
+  clearModulesBtn: $('clear-modules-btn'),
   jiraId:         $('jira-id'),
   fetchJiraBtn:   $('fetch-jira-btn'),
   jiraPreview:    $('jira-preview'),
@@ -84,6 +108,30 @@ const els = {
   modalSteps:     $('modal-steps'),
   modalExpected:  $('modal-expected'),
   modalTags:      $('modal-tags'),
+  // Bug modal
+  bugModalOverlay: $('bug-modal-overlay'),
+  bugModalTcId: $('bug-modal-tc-id'),
+  bugModalSeverityBadge: $('bug-modal-severity-badge'),
+  bugSummary: $('bug-summary'),
+  bugDescription: $('bug-description'),
+  bugSteps: $('bug-steps'),
+  bugActual: $('bug-actual'),
+  bugExpected: $('bug-expected'),
+  bugSeverity: $('bug-severity'),
+  bugEnvironment: $('bug-environment'),
+  bugProject: $('bug-project'),
+  bugModule: $('bug-module'),
+  bugClassification: $('bug-classification'),
+  bugType: $('bug-type'),
+  bugDeviceType: $('bug-device-type'),
+  bugImpacted: $('bug-impacted'),
+  bugAppVersion: $('bug-app-version'),
+  bugVertical: $('bug-vertical'),
+  bugReviewer: $('bug-reviewer'),
+  bugSprint: $('bug-sprint'),
+  bugAdditionalNotes: $('bug-additional-notes'),
+  bugRootCause: $('bug-root-cause'),
+  submitBugBtn: $('submit-bug-btn'),
   // History
   historyView:    $('history-view'),
   historyTbody:   $('history-tbody'),
@@ -96,6 +144,7 @@ const els = {
 };
 
 const API_BASE = window.location.origin;
+const SESSION_STORAGE_KEY = 'ai-testcase-generator-session-v2';
 
 // ── API helpers ────────────────────────────────────────────────────────────
 async function apiGet(path) {
@@ -157,21 +206,35 @@ function hasRequirementSource() {
 
 function updateGenerateButton() {
   const hasProjects = state.selectedProjects.length > 0;
+  const hasModules = state.selectedModules.length > 0;
   const hasSource = hasRequirementSource();
-  const canGenerate = hasProjects && hasSource && !state.isLoading;
+  const canGenerate = hasProjects && hasModules && hasSource && !state.isLoading;
 
   els.generateBtn.disabled = !canGenerate;
-  els.generateBtn.title = canGenerate ? 'Generate test cases' : 'Select project and requirement source';
+  els.generateBtn.title = canGenerate ? 'Generate test cases' : 'Select project, module, and requirement source';
 
   if (!hasProjects) {
     els.projectHelper.textContent = 'Select at least one project before generation.';
     els.projectHelper.classList.add('warning');
-  } else if (!hasSource) {
-    els.projectHelper.textContent = 'Please select a requirement source (Jira, Text, Document, or GitHub PR) along with Project selection.';
-    els.projectHelper.classList.add('warning');
   } else {
-    els.projectHelper.textContent = 'Project context will guide AI coverage for the selected source.';
+    els.projectHelper.textContent = 'Project context will guide product-specific coverage.';
     els.projectHelper.classList.remove('warning');
+  }
+
+  if (!hasModules) {
+    els.moduleHelper.textContent = 'Select at least one module before generation.';
+    els.moduleHelper.classList.add('warning');
+  } else if (!hasSource) {
+    els.moduleHelper.textContent = 'Please select Project, Module, and at least one requirement source (Jira, Text, Document, or GitHub PR).';
+    els.moduleHelper.classList.add('warning');
+  } else {
+    els.moduleHelper.textContent = 'Module context will guide feature-specific Bellevie coverage.';
+    els.moduleHelper.classList.remove('warning');
+  }
+
+  if (hasProjects && !hasSource) {
+    els.projectHelper.textContent = 'Please select Project, Module, and at least one requirement source (Jira, Text, Document, or GitHub PR).';
+    els.projectHelper.classList.add('warning');
   }
 }
 
@@ -257,6 +320,90 @@ document.addEventListener('click', (event) => {
 });
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') closeProjectMenu();
+});
+
+function openModuleMenu() {
+  els.moduleMenu.classList.remove('hidden');
+  els.moduleMultiselect.classList.add('open');
+  els.moduleToggle.setAttribute('aria-expanded', 'true');
+  els.moduleSearch.focus();
+}
+
+function closeModuleMenu() {
+  els.moduleMenu.classList.add('hidden');
+  els.moduleMultiselect.classList.remove('open');
+  els.moduleToggle.setAttribute('aria-expanded', 'false');
+}
+
+function toggleModuleMenu() {
+  if (els.moduleMenu.classList.contains('hidden')) openModuleMenu();
+  else closeModuleMenu();
+}
+
+function toggleModuleSelection(moduleName) {
+  if (state.selectedModules.includes(moduleName)) {
+    state.selectedModules = state.selectedModules.filter((item) => item !== moduleName);
+  } else {
+    state.selectedModules = [...state.selectedModules, moduleName];
+  }
+  renderModuleSelector();
+  updateGenerateButton();
+}
+
+function removeModule(moduleName, event) {
+  event.stopPropagation();
+  state.selectedModules = state.selectedModules.filter((item) => item !== moduleName);
+  renderModuleSelector();
+  updateGenerateButton();
+}
+
+function clearModules() {
+  state.selectedModules = [];
+  els.moduleSearch.value = '';
+  renderModuleSelector();
+  updateGenerateButton();
+}
+
+function renderModuleSelector() {
+  if (!state.selectedModules.length) {
+    els.selectedModules.innerHTML = '<span class="multiselect-placeholder">Search and select module context...</span>';
+  } else {
+    els.selectedModules.innerHTML = state.selectedModules.map((moduleName) => `
+      <span class="project-chip">
+        ${escapeHtml(moduleName)}
+        <button type="button" onclick="removeModule('${escapeHtml(moduleName)}', event)" title="Remove ${escapeHtml(moduleName)}">×</button>
+      </span>
+    `).join('');
+  }
+
+  const query = els.moduleSearch.value.trim().toLowerCase();
+  const options = MODULE_OPTIONS.filter((moduleName) => moduleName.toLowerCase().includes(query));
+  els.moduleOptions.innerHTML = options.length
+    ? options.map((moduleName) => {
+        const selected = state.selectedModules.includes(moduleName);
+        return `
+          <button class="project-option ${selected ? 'selected' : ''}" type="button" data-module="${escapeHtml(moduleName)}">
+            <span>${escapeHtml(moduleName)}</span>
+            <span class="option-check">${selected ? '✓' : ''}</span>
+          </button>`;
+      }).join('')
+    : '<div class="project-option" style="cursor:default;">No matching modules</div>';
+
+  els.clearModulesBtn.classList.toggle('hidden', state.selectedModules.length === 0);
+}
+
+els.moduleToggle.addEventListener('click', toggleModuleMenu);
+els.moduleSearch.addEventListener('input', renderModuleSelector);
+els.clearModulesBtn.addEventListener('click', clearModules);
+els.moduleOptions.addEventListener('click', (event) => {
+  const option = event.target.closest('.project-option[data-module]');
+  if (option) toggleModuleSelection(option.dataset.module);
+});
+document.addEventListener('click', (event) => {
+  if (!els.moduleMultiselect.contains(event.target)) closeModuleMenu();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeModuleMenu();
 });
 
 // ── Tab Switching (Input Sources) ─────────────────────────────────────────
@@ -359,8 +506,14 @@ async function handleGenerate() {
     return;
   }
 
+  if (!state.selectedModules.length) {
+    showToast('Please select at least one module.', 'error');
+    updateGenerateButton();
+    return;
+  }
+
   if (!jiraId && !textInput && !githubUrl && !hasFile) {
-    showToast('Please select a requirement source (Jira, Text, Document, or GitHub PR) along with Project selection.', 'error');
+    showToast('Please select Project, Module, and at least one requirement source (Jira, Text, Document, or GitHub PR).', 'error');
     updateGenerateButton();
     return;
   }
@@ -372,6 +525,7 @@ async function handleGenerate() {
   try {
     const formData = new FormData();
     state.selectedProjects.forEach((project) => formData.append('selected_projects', project));
+    state.selectedModules.forEach((moduleName) => formData.append('selected_modules', moduleName));
     if (jiraId)    formData.append('jira_id', jiraId);
     if (textInput) formData.append('text_input', textInput);
     if (githubUrl) formData.append('github_pr_url', githubUrl);
@@ -387,6 +541,7 @@ async function handleGenerate() {
     formData.append('source_type', sourceType);
     state.lastSourceType = sourceType;
     state.lastSelectedProjects = [...state.selectedProjects];
+    state.lastSelectedModules = [...state.selectedModules];
 
     const res = await fetch(`${API_BASE}/api/generate`, { method: 'POST', body: formData });
 
@@ -396,9 +551,11 @@ async function handleGenerate() {
     }
 
     const data = await res.json();
-    state.testCases  = data.test_cases;
+    state.testCases  = data.test_cases.map(normalizeExecutionState);
     state.lastSummary = data.summary;
+    state.lastSourceInfo = data.source_info || {};
     state.lastSelectedProjects = data.source_info?.selected_projects || [...state.selectedProjects];
+    state.lastSelectedModules = data.source_info?.selected_modules || [...state.selectedModules];
 
     renderResults(data);
     showPanel('results');
@@ -459,6 +616,7 @@ function renderResults(data) {
   els.moduleBadge.textContent  = summary.module_detected || 'General';
   els.tabTcCount.textContent   = summary.total;
   renderTable(test_cases);
+  saveExecutionSession();
 }
 
 function renderTable(cases) {
@@ -472,6 +630,7 @@ function renderTable(cases) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td class="tc-id-cell">${escapeHtml(tc.id)}</td>
+      <td>${renderExecutionControls(tc)}</td>
       <td><span class="priority-badge ${escapeHtml(tc.priority)}">${escapeHtml(tc.priority)}</span></td>
       <td><span class="type-badge">${escapeHtml(tc.test_type)}</span></td>
       <td class="tags-cell">${renderTags(tc.tags)}</td>
@@ -479,11 +638,68 @@ function renderTable(cases) {
       <td style="color:var(--text-secondary);font-size:0.77rem;">${escapeHtml(tc.preconditions)}</td>
       <td class="steps-cell">${renderStepsInline(tc.steps)}</td>
       <td class="expected-cell">${escapeHtml(tc.expected_result)}</td>
-      <td class="actual-cell">${tc.actual_result ? escapeHtml(tc.actual_result) : '—'}</td>`;
+      <td class="actual-cell">${tc.actual_result ? escapeHtml(tc.actual_result) : '—'}</td>
+      <td class="bug-action-cell">${renderBugAction(tc)}</td>`;
     tr.addEventListener('click', () => openModal(tc));
     frag.appendChild(tr);
   });
   els.tcTbody.appendChild(frag);
+}
+
+function normalizeExecutionState(tc) {
+  return {
+    ...tc,
+    status: tc.status || 'Not Executed',
+    execution_notes: tc.execution_notes || '',
+    tester_comments: tc.tester_comments || '',
+    jira_bug_id: tc.jira_bug_id || '',
+    jira_bug_url: tc.jira_bug_url || '',
+  };
+}
+
+function renderExecutionControls(tc) {
+  const statuses = ['Not Executed', 'Passed', 'Failed', 'Blocked', 'Skipped'];
+  return `
+    <div class="execution-controls" onclick="event.stopPropagation()">
+      <select class="status-select" onchange="updateTestStatus('${escapeHtml(tc.id)}', this.value)">
+        ${statuses.map((status) => `<option value="${status}" ${tc.status === status ? 'selected' : ''}>${status}</option>`).join('')}
+      </select>
+      <textarea class="execution-notes" placeholder="Execution notes..." oninput="updateExecutionNotes('${escapeHtml(tc.id)}', this.value)">${escapeHtml(tc.execution_notes || '')}</textarea>
+    </div>`;
+}
+
+function renderBugAction(tc) {
+  if (tc.jira_bug_id) {
+    const href = tc.jira_bug_url || '#';
+    return `<a class="linked-bug" href="${escapeHtml(href)}" target="_blank" onclick="event.stopPropagation()">Linked Bug: ${escapeHtml(tc.jira_bug_id)}</a>`;
+  }
+  if (tc.status === 'Failed') {
+    return `<button class="btn-raise-bug" onclick="event.stopPropagation(); openBugModal('${escapeHtml(tc.id)}')">Raise Bug</button>`;
+  }
+  return `<span class="status-pill ${escapeHtml(tc.status || 'Not Executed')}">${escapeHtml(tc.status || 'Not Executed')}</span>`;
+}
+
+function findTestCase(id) {
+  return state.testCases.find((tc) => tc.id === id);
+}
+
+function updateTestStatus(id, status) {
+  const tc = findTestCase(id);
+  if (!tc) return;
+  tc.status = status;
+  if (status !== 'Failed') {
+    tc.execution_notes = tc.execution_notes || '';
+  }
+  saveExecutionSession();
+  renderTable(state.testCases);
+}
+
+function updateExecutionNotes(id, notes) {
+  const tc = findTestCase(id);
+  if (tc) {
+    tc.execution_notes = notes;
+    saveExecutionSession();
+  }
 }
 
 function renderTags(tags) {
@@ -555,6 +771,7 @@ async function downloadExcel() {
       body: JSON.stringify({
         test_cases: state.testCases,
         selected_projects: state.lastSelectedProjects,
+        selected_modules: state.lastSelectedModules,
         project_name: 'AI Generated Test Cases',
         sheet_title: 'Test Cases',
         source_type: state.lastSourceType || 'text',
@@ -641,6 +858,7 @@ function renderHistoryTable(exports) {
       <td style="font-size:0.78rem;color:var(--text-secondary);">${escapeHtml(createdAt)}</td>
       <td style="text-align:center;font-weight:700;color:var(--accent-light);">${entry.count}</td>
       <td><div class="history-projects">${renderHistoryProjects(entry.selected_projects)}</div></td>
+      <td><div class="history-projects">${renderHistoryProjects(entry.selected_modules)}</div></td>
       <td><span class="source-badge">${escapeHtml(entry.source || 'text')}</span></td>
       <td style="font-size:0.78rem;color:var(--text-secondary);">${escapeHtml(entry.module || 'General')}</td>
       <td>
@@ -715,6 +933,195 @@ function closeModal() {
 
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 
+function getSourceIssueKey() {
+  return state.lastSourceInfo?.jira?.ticket_id || els.jiraId.value.trim().toUpperCase() || null;
+}
+
+function setBugModalLoading(loading) {
+  els.submitBugBtn.disabled = loading;
+  els.submitBugBtn.textContent = loading ? 'Creating…' : 'Create Jira Bug';
+}
+
+function fillBugModal(draft) {
+  els.bugSummary.value = draft.bug_summary || '';
+  els.bugDescription.value = draft.description || '';
+  els.bugSteps.value = Array.isArray(draft.steps_to_reproduce)
+    ? draft.steps_to_reproduce.map((step, index) => `${index + 1}. ${step}`).join('\n')
+    : (draft.steps_to_reproduce || '');
+  els.bugActual.value = draft.actual_result || '';
+  els.bugExpected.value = draft.expected_result || '';
+  els.bugSeverity.value = draft.severity || 'Medium';
+  els.bugEnvironment.value = draft.environment || 'QA';
+  els.bugProject.value = draft.project || state.lastSelectedProjects.join(', ');
+  els.bugModule.value = draft.module || state.lastSelectedModules.join(', ');
+  els.bugClassification.value = draft.classification || 'Functionality';
+  els.bugType.value = draft.type || 'Frontend';
+  els.bugDeviceType.value = draft.device_type || 'Web';
+  els.bugImpacted.value = draft.impacted_areas || '';
+  els.bugAppVersion.value = draft.app_version || '';
+  els.bugVertical.value = draft.vertical || '';
+  els.bugReviewer.value = draft.reviewer || '';
+  els.bugSprint.value = draft.sprint || '';
+  els.bugAdditionalNotes.value = draft.additional_notes || '';
+  els.bugRootCause.value = draft.likely_root_cause || '';
+  els.bugModalSeverityBadge.textContent = els.bugSeverity.value;
+  els.bugModalSeverityBadge.className = `modal-priority-badge priority-badge ${els.bugSeverity.value === 'Critical' ? 'High' : els.bugSeverity.value}`;
+}
+
+async function openBugModal(testCaseId) {
+  const tc = findTestCase(testCaseId);
+  if (!tc) return;
+  if (tc.jira_bug_id) {
+    showToast('Bug already raised for this test case.', 'info');
+    return;
+  }
+  if (tc.status !== 'Failed') {
+    showToast('Bug can be raised only for failed test cases.', 'error');
+    return;
+  }
+
+  state.activeBugTestCaseId = testCaseId;
+  els.bugModalTcId.textContent = testCaseId;
+  els.bugModalOverlay.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  setBugModalLoading(false);
+  fillBugModal({
+    bug_summary: tc.title,
+    description: `Failure observed while executing ${tc.id}.`,
+    steps_to_reproduce: tc.steps,
+    actual_result: tc.execution_notes || tc.actual_result || '',
+    expected_result: tc.expected_result,
+    severity: 'Medium',
+    environment: 'QA',
+    project: state.lastSelectedProjects.join(', '),
+    module: state.lastSelectedModules.join(', '),
+    classification: 'Functionality',
+    type: inferBugType(tc),
+    device_type: inferDeviceType(),
+    impacted_areas: state.lastSelectedModules.join(', '),
+    vertical: inferVertical(),
+  });
+
+  try {
+    const res = await fetch(`${API_BASE}/api/jira/bug-draft`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        test_case: tc,
+        selected_projects: state.lastSelectedProjects,
+        selected_modules: state.lastSelectedModules,
+        execution_notes: tc.execution_notes || '',
+        tester_notes: tc.tester_comments || '',
+        source_info: state.lastSourceInfo || {},
+      }),
+    });
+    if (!res.ok) throw new Error((await res.json()).detail || 'Could not generate bug draft');
+    fillBugModal(await res.json());
+  } catch (err) {
+    showToast(`Using local bug draft: ${err.message}`, 'info');
+  }
+}
+
+function closeBugModal() {
+  els.bugModalOverlay.classList.add('hidden');
+  state.activeBugTestCaseId = null;
+  document.body.style.overflow = '';
+}
+
+function parseBugSteps() {
+  return els.bugSteps.value
+    .split(/\n+/)
+    .map((line) => line.replace(/^\s*\d+\.\s*/, '').trim())
+    .filter(Boolean);
+}
+
+function inferBugType(tc) {
+  const text = [tc.title, tc.test_type, ...(tc.tags || []), ...state.lastSelectedProjects, ...state.lastSelectedModules].join(' ').toLowerCase();
+  if (text.includes('api')) return 'API';
+  if (text.includes('backend')) return 'Backend';
+  if (text.includes('app') || text.includes('mobile')) return 'Mobile';
+  return 'Frontend';
+}
+
+function inferDeviceType() {
+  return state.lastSelectedProjects.join(' ').toLowerCase().includes('app') ? 'Mobile' : 'Web';
+}
+
+function inferVertical() {
+  return state.lastSelectedProjects.join(' ').toLowerCase().includes('marketplace') ? 'Marketplace' : 'Residential';
+}
+
+async function submitJiraBug() {
+  const tc = findTestCase(state.activeBugTestCaseId);
+  if (!tc) return;
+  if (tc.jira_bug_id) {
+    showToast('Bug already raised for this test case.', 'info');
+    closeBugModal();
+    return;
+  }
+
+  const required = [
+    [els.bugSummary.value.trim(), 'Bug Summary'],
+    [els.bugDescription.value.trim(), 'Description'],
+    [els.bugActual.value.trim(), 'Actual Result'],
+    [els.bugExpected.value.trim(), 'Expected Result'],
+  ];
+  const missing = required.find(([value]) => !value);
+  if (missing) {
+    showToast(`${missing[1]} is required.`, 'error');
+    return;
+  }
+
+  setBugModalLoading(true);
+  try {
+    const res = await fetch(`${API_BASE}/api/jira/create-bug`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        test_case_id: tc.id,
+        source_issue_key: getSourceIssueKey(),
+        bug_summary: els.bugSummary.value.trim(),
+        description: els.bugDescription.value.trim(),
+        steps_to_reproduce: parseBugSteps(),
+        actual_result: els.bugActual.value.trim(),
+        expected_result: els.bugExpected.value.trim(),
+        severity: els.bugSeverity.value,
+        environment: els.bugEnvironment.value.trim(),
+        project: els.bugProject.value.trim(),
+        module: els.bugModule.value.trim(),
+        classification: els.bugClassification.value.trim(),
+        type: els.bugType.value,
+        device_type: els.bugDeviceType.value,
+        impacted_areas: els.bugImpacted.value.trim(),
+        app_version: els.bugAppVersion.value.trim(),
+        vertical: els.bugVertical.value.trim(),
+        reviewer: els.bugReviewer.value.trim(),
+        sprint: els.bugSprint.value.trim(),
+        additional_notes: els.bugAdditionalNotes.value.trim(),
+        likely_root_cause: els.bugRootCause.value.trim(),
+        attachments: [],
+      }),
+    });
+    if (!res.ok) throw new Error((await res.json()).detail || 'Jira bug creation failed');
+    const data = await res.json();
+    tc.jira_bug_id = data.issue_key;
+    tc.jira_bug_url = data.issue_url;
+    saveExecutionSession();
+    closeBugModal();
+    renderTable(state.testCases);
+    showToast(`Bug created successfully: ${data.issue_key}`, 'success');
+  } catch (err) {
+    showToast(err.message || 'Could not create Jira bug.', 'error');
+  } finally {
+    setBugModalLoading(false);
+  }
+}
+
+els.bugSeverity.addEventListener('change', () => {
+  els.bugModalSeverityBadge.textContent = els.bugSeverity.value;
+  els.bugModalSeverityBadge.className = `modal-priority-badge priority-badge ${els.bugSeverity.value === 'Critical' ? 'High' : els.bugSeverity.value}`;
+});
+
 // ── Panel switching ───────────────────────────────────────────────────────
 function showPanel(name) {
   els.emptyState.classList.add('hidden');
@@ -731,7 +1138,48 @@ function showPanel(name) {
 function resetToEmpty() {
   showPanel('empty');
   state.testCases = [];
+  state.lastSummary = null;
+  state.lastSourceInfo = {};
+  state.lastSelectedProjects = [];
+  state.lastSelectedModules = [];
+  localStorage.removeItem(SESSION_STORAGE_KEY);
+  clearProjects();
+  clearModules();
   els.statsPanel.classList.add('hidden');
+}
+
+function saveExecutionSession() {
+  if (!state.testCases.length) return;
+  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
+    testCases: state.testCases,
+    lastSummary: state.lastSummary,
+    lastSourceType: state.lastSourceType,
+    lastSelectedProjects: state.lastSelectedProjects,
+    lastSelectedModules: state.lastSelectedModules,
+    lastSourceInfo: state.lastSourceInfo,
+  }));
+}
+
+function restoreExecutionSession() {
+  const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+  if (!raw) return false;
+  try {
+    const saved = JSON.parse(raw);
+    if (!Array.isArray(saved.testCases) || !saved.testCases.length) return false;
+    state.testCases = saved.testCases.map(normalizeExecutionState);
+    state.lastSummary = saved.lastSummary;
+    state.lastSourceType = saved.lastSourceType || 'text';
+    state.lastSelectedProjects = saved.lastSelectedProjects || [];
+    state.lastSelectedModules = saved.lastSelectedModules || [];
+    state.lastSourceInfo = saved.lastSourceInfo || {};
+    renderResults({ test_cases: state.testCases, summary: state.lastSummary || { total: state.testCases.length, high_priority: 0, medium_priority: 0, low_priority: 0, module_detected: 'Restored' } });
+    showPanel('results');
+    switchView('testcases');
+    return true;
+  } catch {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+    return false;
+  }
 }
 
 // ── Loading state ─────────────────────────────────────────────────────────
@@ -780,8 +1228,10 @@ function escapeHtml(str) {
 // ── Init ──────────────────────────────────────────────────────────────────
 (function init() {
   showPanel('empty');
+  renderModuleSelector();
   renderProjectSelector();
   updateGenerateButton();
+  restoreExecutionSession();
   checkHealth();
   // Load initial history count for the badge
   apiGet('/api/export/history').then((data) => {

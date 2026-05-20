@@ -6,8 +6,9 @@ import re
 import requests
 from requests.auth import HTTPBasicAuth
 
+from backend.config.jira_bug_fields import get_bug_field_map
 from backend.config.settings import settings
-from backend.models.schemas import JiraTicket
+from backend.models.schemas import JiraBugCreateRequest, JiraBugCreateResponse, JiraTicket
 from backend.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -73,6 +74,127 @@ def _extract_adf_text(adf: dict) -> str:
     for child in adf.get("content", []):
         text_parts.append(_extract_adf_text(child))
     return " ".join(filter(None, text_parts)).strip()
+
+
+def _text_to_adf(text: str) -> dict:
+    paragraphs = []
+    for line in (text or "").splitlines():
+        clean = line.strip()
+        if not clean:
+            continue
+        paragraphs.append({
+            "type": "paragraph",
+            "content": [{"type": "text", "text": clean}],
+        })
+    if not paragraphs:
+        paragraphs.append({
+            "type": "paragraph",
+            "content": [{"type": "text", "text": "No description provided."}],
+        })
+    return {
+        "type": "doc",
+        "version": 1,
+        "content": paragraphs,
+    }
+
+
+def _jira_field_value(value: str):
+    clean = str(value or "").strip()
+    if not clean:
+        return None
+    return {"value": clean}
+
+
+def _infer_project_key(source_issue_key: str | None = None) -> str:
+    if settings.jira_bug_project_key:
+        return settings.jira_bug_project_key.strip().upper()
+    if source_issue_key and "-" in source_issue_key:
+        return source_issue_key.split("-", 1)[0].strip().upper()
+    raise ValueError("JIRA_BUG_PROJECT_KEY must be set to create Jira bugs.")
+
+
+def _build_bug_description(request: JiraBugCreateRequest) -> str:
+    steps = "\n".join(f"{idx}. {step}" for idx, step in enumerate(request.steps_to_reproduce, 1))
+    sections = [
+        f"Description:\n{request.description}",
+        f"Steps to Reproduce:\n{steps or 'Not provided'}",
+        f"Actual Result:\n{request.actual_result}",
+        f"Expected Result:\n{request.expected_result}",
+        f"Environment: {request.environment}",
+        f"Severity: {request.severity}",
+        f"Project Context: {request.project}",
+        f"Module Context: {request.module}",
+        f"Classification: {request.classification}",
+        f"Type: {request.type}",
+        f"Device Type: {request.device_type}",
+    ]
+    optional = [
+        ("Impacted Areas", request.impacted_areas),
+        ("App Version", request.app_version),
+        ("Vertical", request.vertical),
+        ("Reviewer", request.reviewer),
+        ("Sprint", request.sprint),
+        ("Likely Root Cause", request.likely_root_cause),
+        ("Additional Notes", request.additional_notes),
+    ]
+    for label, value in optional:
+        if value:
+            sections.append(f"{label}: {value}")
+    return "\n\n".join(sections)
+
+
+def create_jira_bug(request: JiraBugCreateRequest) -> JiraBugCreateResponse:
+    """
+    Create a Jira Bug from a failed test case using backend-only credentials.
+    Custom field IDs are supplied by backend/config/jira_bug_fields.py or env.
+    """
+    base_url = _get_base_url()
+    auth = _get_auth()
+    project_key = _infer_project_key(request.source_issue_key)
+    field_map = get_bug_field_map()
+
+    fields: dict = {
+        "project": {"key": project_key},
+        "issuetype": {"name": "Bug"},
+        "summary": request.bug_summary.strip(),
+        "description": _text_to_adf(_build_bug_description(request)),
+    }
+
+    custom_values = {
+        "severity": request.severity,
+        "module": request.module,
+        "classification": request.classification,
+        "environment": request.environment,
+        "device_type": request.device_type,
+        "impacted_areas": request.impacted_areas,
+        "app_version": request.app_version,
+        "vertical": request.vertical,
+        "reviewer": request.reviewer,
+        "sprint": request.sprint,
+    }
+    for key, value in custom_values.items():
+        jira_field = field_map.get(key)
+        jira_value = _jira_field_value(value)
+        if jira_field and jira_value:
+            fields[jira_field] = jira_value
+
+    response = requests.post(
+        f"{base_url}/rest/api/3/issue",
+        auth=auth,
+        headers={"Accept": "application/json", "Content-Type": "application/json"},
+        json={"fields": fields},
+        timeout=20,
+    )
+    response.raise_for_status()
+    data = response.json()
+    issue_key = data["key"]
+    issue_url = f"{base_url}/browse/{issue_key}"
+    return JiraBugCreateResponse(
+        success=True,
+        issue_key=issue_key,
+        issue_url=issue_url,
+        message=f"Bug created successfully: {issue_key}",
+    )
 
 
 def _build_raw_text(ticket: JiraTicket) -> str:

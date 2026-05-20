@@ -11,6 +11,7 @@ def test_generate_rejects_missing_project_selection():
     with pytest.raises(HTTPException) as exc:
         asyncio.run(generate_router.generate(
             selected_projects=[],
+            selected_modules=["Onboarding"],
             jira_id=None,
             text_input="Generate login test cases.",
             github_pr_url=None,
@@ -26,6 +27,7 @@ def test_generate_rejects_project_without_requirement_source():
     with pytest.raises(HTTPException) as exc:
         asyncio.run(generate_router.generate(
             selected_projects=["Resident APP"],
+            selected_modules=["Onboarding"],
             jira_id=None,
             text_input=None,
             github_pr_url=None,
@@ -37,11 +39,44 @@ def test_generate_rejects_project_without_requirement_source():
     assert "requirement source" in exc.value.detail.lower()
 
 
-def test_generate_accepts_text_with_project(monkeypatch):
-    async def fake_generate_test_cases(*, requirements, source_type, additional_context, selected_projects):
+def test_generate_rejects_missing_module_selection():
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(generate_router.generate(
+            selected_projects=["Resident APP"],
+            selected_modules=[],
+            jira_id=None,
+            text_input="Generate login test cases.",
+            github_pr_url=None,
+            additional_context=None,
+            file=None,
+        ))
+
+    assert exc.value.status_code == 400
+    assert "select at least one module" in exc.value.detail.lower()
+
+
+def test_generate_rejects_invalid_module_selection():
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(generate_router.generate(
+            selected_projects=["Resident APP"],
+            selected_modules=["Unknown Module"],
+            jira_id=None,
+            text_input="Generate login test cases.",
+            github_pr_url=None,
+            additional_context=None,
+            file=None,
+        ))
+
+    assert exc.value.status_code == 400
+    assert "invalid module selection" in exc.value.detail.lower()
+
+
+def test_generate_accepts_text_with_project_and_module(monkeypatch):
+    async def fake_generate_test_cases(*, requirements, source_type, additional_context, selected_projects, selected_modules):
         assert "Generate login test cases." in requirements
         assert source_type == "text"
         assert selected_projects == ["Resident APP"]
+        assert selected_modules == ["Onboarding"]
         return (
             [
                 TestCase(
@@ -62,6 +97,7 @@ def test_generate_accepts_text_with_project(monkeypatch):
 
     response = asyncio.run(generate_router.generate(
         selected_projects=["Resident APP"],
+        selected_modules=["Onboarding"],
         jira_id=None,
         text_input="Generate login test cases.",
         github_pr_url=None,
@@ -71,4 +107,5 @@ def test_generate_accepts_text_with_project(monkeypatch):
 
     assert response.success is True
     assert response.source_info["selected_projects"] == ["Resident APP"]
+    assert response.source_info["selected_modules"] == ["Onboarding"]
     assert response.summary.total == 1
