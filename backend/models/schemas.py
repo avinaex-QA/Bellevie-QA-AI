@@ -8,6 +8,7 @@ from enum import Enum
 
 class SourceType(str, Enum):
     JIRA = "jira"
+    CLICKUP = "clickup"
     DOCUMENT = "document"
     TEXT = "text"
     GITHUB_PR = "github_pr"
@@ -69,6 +70,7 @@ class GenerateRequest(BaseModel):
     selected_projects: List[str] = Field(default_factory=list)
     selected_modules: List[str] = Field(default_factory=list)
     jira_id: Optional[str] = None
+    clickup_task_id: Optional[str] = None
     text_input: Optional[str] = None
     github_pr_url: Optional[str] = None
     additional_context: Optional[str] = None
@@ -92,6 +94,23 @@ class JiraTicket(BaseModel):
     priority: str = ""
     issue_type: str = ""
     labels: List[str] = Field(default_factory=list)
+    raw_text: str = ""
+
+
+class ClickUpTask(BaseModel):
+    task_id: str
+    title: str
+    description: str = ""
+    status: str = ""
+    priority: str = ""
+    assignee: str = ""
+    tags: List[str] = Field(default_factory=list)
+    checklists: List[str] = Field(default_factory=list)
+    comments: List[str] = Field(default_factory=list)
+    custom_fields: Dict[str, str] = Field(default_factory=dict)
+    dependencies: List[str] = Field(default_factory=list)
+    due_date: str = ""
+    created_date: str = ""
     raw_text: str = ""
 
 
@@ -161,3 +180,95 @@ class JiraFetchRequest(BaseModel):
 
 class GitPRRequest(BaseModel):
     pr_url: str
+
+
+class UserPublic(BaseModel):
+    id: str
+    name: str
+    email: str
+    auth_provider: str = "email"
+    avatar_url: Optional[str] = None
+    created_at: str
+    last_login: Optional[str] = None
+    is_active: bool = True
+    email_verified: bool = False
+
+
+class SignupRequest(BaseModel):
+    name: str = Field(..., min_length=2)
+    email: str = Field(..., min_length=5)
+    password: str = Field(..., min_length=8)
+    confirm_password: str = Field(..., min_length=8)
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class AuthResponse(BaseModel):
+    success: bool = True
+    user: UserPublic
+
+
+class OtpStartResponse(BaseModel):
+    success: bool = True
+    message: str
+    email: str
+    expires_in_seconds: int = 600
+
+
+class OtpVerifyRequest(BaseModel):
+    email: str
+    otp: str
+
+
+class OtpResendRequest(BaseModel):
+    email: str
+
+
+class IntegrationStatus(BaseModel):
+    provider: str
+    connected: bool
+    auth_type: str = ""
+    display: Dict[str, Any] = Field(default_factory=dict)
+    updated_at: Optional[str] = None
+
+
+class IntegrationStatusResponse(BaseModel):
+    integrations: List[IntegrationStatus]
+
+
+class JiraIntegrationConfig(BaseModel):
+    base_url: str
+    email: str
+    api_token: str
+    bug_project_key: Optional[str] = None
+
+
+class ClickUpIntegrationConfig(BaseModel):
+    api_token: str
+    api_base: str = "https://api.clickup.com/api/v2"
+
+
+class GitHubIntegrationConfig(BaseModel):
+    token: str
+
+
+class AiIntegrationConfig(BaseModel):
+    provider: str = "groq"
+    api_key: str
+
+
+class IntegrationSaveResponse(BaseModel):
+    success: bool = True
+    provider: str
+    message: str
+
+
+class OAuthStartResponse(BaseModel):
+    provider: str
+    authorization_url: str
+    state: str
+    configured: bool
+    message: Optional[str] = None

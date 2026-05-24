@@ -79,11 +79,17 @@ def _format_steps(steps: List[str]) -> str:
 
 
 # ── History helpers ────────────────────────────────────────────────────────
-def load_history() -> dict:
+def load_history(user_id: str | None = None) -> dict:
     if HISTORY_FILE.exists():
         try:
             with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+                if user_id:
+                    data["exports"] = [
+                        entry for entry in data.get("exports", [])
+                        if entry.get("user_id") == user_id
+                    ]
+                return data
         except Exception:
             pass
     return {"exports": []}
@@ -105,6 +111,7 @@ def append_history_entry(
     module: str = "General",
     selected_projects: Optional[List[str]] = None,
     selected_modules: Optional[List[str]] = None,
+    user_id: str | None = None,
 ) -> None:
     """Prepend a new export entry to history.json (newest first)."""
     history = load_history()
@@ -117,15 +124,19 @@ def append_history_entry(
         "module": module,
         "selected_projects": selected_projects or [],
         "selected_modules": selected_modules or [],
+        "user_id": user_id,
     })
     save_history(history)
     logger.info(f"History updated — {len(history['exports'])} total exports recorded")
 
 
-def remove_history_entry(file_name: str) -> None:
+def remove_history_entry(file_name: str, user_id: str | None = None) -> None:
     """Remove a single entry from history.json by file name."""
     history = load_history()
-    history["exports"] = [e for e in history["exports"] if e["file_name"] != file_name]
+    history["exports"] = [
+        e for e in history["exports"]
+        if not (e["file_name"] == file_name and (user_id is None or e.get("user_id") == user_id))
+    ]
     save_history(history)
 
 
@@ -165,6 +176,7 @@ def generate_excel(
     sheet_title: str = "Test Cases",
     source_type: str = "text",
     module_detected: str = "General",
+    user_id: str | None = None,
 ) -> tuple[bytes, str]:
     """
     Builds a formatted workbook, saves it to /exports/<timestamp>.xlsx,
@@ -297,6 +309,7 @@ def generate_excel(
         module=module_detected,
         selected_projects=selected_projects,
         selected_modules=selected_modules,
+        user_id=user_id,
     )
 
     return raw_bytes, file_name

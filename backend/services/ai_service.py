@@ -9,6 +9,7 @@ import re
 import os
 from typing import List
 
+import requests
 from openai import OpenAI
 from google import genai
 from google.genai import types
@@ -142,15 +143,18 @@ def _normalize_steps(steps_raw) -> List[str]:
 
 
 # ── AI CALL ──────────────────────────────────────────────────────────────
-def _call_ai_sync(prompt: str) -> str:
-    logger.info(f"Using AI Provider: {AI_PROVIDER}")
+def _call_ai_sync(prompt: str, ai_config: dict | None = None) -> str:
+    provider = (ai_config or {}).get("provider", AI_PROVIDER).lower()
+    api_key = (ai_config or {}).get("api_key")
+    logger.info(f"Using AI Provider: {provider}")
 
     # GROQ
-    if AI_PROVIDER == "groq":
-        if not groq_client:
+    if provider == "groq":
+        client = OpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1") if api_key else groq_client
+        if not client:
             raise ValueError("GROQ_API_KEY not configured")
 
-        response = groq_client.chat.completions.create(
+        response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": _SYSTEM},
@@ -163,11 +167,12 @@ def _call_ai_sync(prompt: str) -> str:
         return response.choices[0].message.content
 
     # OPENAI
-    elif AI_PROVIDER == "openai":
-        if not openai_client:
+    elif provider == "openai":
+        client = OpenAI(api_key=api_key) if api_key else openai_client
+        if not client:
             raise ValueError("OPENAI_API_KEY not configured")
 
-        response = openai_client.chat.completions.create(
+        response = client.chat.completions.create(
             model="gpt-4.1-mini",
             messages=[
                 {"role": "system", "content": _SYSTEM},
@@ -180,11 +185,12 @@ def _call_ai_sync(prompt: str) -> str:
         return response.choices[0].message.content
 
     # DEEPSEEK
-    elif AI_PROVIDER == "deepseek":
-        if not deepseek_client:
+    elif provider == "deepseek":
+        client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com") if api_key else deepseek_client
+        if not client:
             raise ValueError("DEEPSEEK_API_KEY not configured")
 
-        response = deepseek_client.chat.completions.create(
+        response = client.chat.completions.create(
             model="deepseek-chat",
             messages=[
                 {"role": "system", "content": _SYSTEM},
@@ -197,11 +203,12 @@ def _call_ai_sync(prompt: str) -> str:
         return response.choices[0].message.content
 
     # GEMINI
-    elif AI_PROVIDER == "gemini":
-        if not gemini_client:
+    elif provider == "gemini":
+        client = genai.Client(api_key=api_key) if api_key else gemini_client
+        if not client:
             raise ValueError("GEMINI_API_KEY not configured")
 
-        response = gemini_client.models.generate_content(
+        response = client.models.generate_content(
             model=GEMINI_MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
@@ -213,8 +220,32 @@ def _call_ai_sync(prompt: str) -> str:
 
         return response.text
 
+    elif provider == "claude":
+        anthropic_key = api_key or os.getenv("ANTHROPIC_API_KEY")
+        if not anthropic_key:
+            raise ValueError("ANTHROPIC_API_KEY not configured")
+        response = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": anthropic_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": "claude-3-5-sonnet-latest",
+                "system": _SYSTEM,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.3,
+                "max_tokens": 4000,
+            },
+            timeout=60,
+        )
+        response.raise_for_status()
+        content = response.json().get("content", [])
+        return "".join(part.get("text", "") for part in content if part.get("type") == "text")
+
     else:
-        raise ValueError(f"Unsupported AI provider: {AI_PROVIDER}")
+        raise ValueError(f"Unsupported AI provider: {provider}")
 
 
 # ── Response Parser ─────────────────────────────────────────────────────
@@ -351,7 +382,7 @@ def _parse_bug_draft(raw: str, fallback: BugDraftResponse) -> BugDraftResponse:
     return BugDraftResponse(**merged)
 
 
-async def generate_bug_draft(request: BugDraftRequest) -> BugDraftResponse:
+async def generate_bug_draft(request: BugDraftRequest, ai_config: dict | None = None) -> BugDraftResponse:
     fallback = _fallback_bug_draft(request)
     context = build_context_section(request.selected_projects, request.selected_modules)
     test_case = request.test_case
@@ -381,7 +412,7 @@ Tester notes: {request.tester_notes or test_case.tester_comments}
 Source context: {json.dumps(request.source_info)[:1200]}
 """
     try:
-        raw = await asyncio.to_thread(_call_ai_sync, prompt)
+        raw = await asyncio.to_thread(_call_ai_sync, prompt, ai_config) if ai_config else await asyncio.to_thread(_call_ai_sync, prompt)
         return _parse_bug_draft(raw, fallback)
     except Exception as e:
         logger.warning(f"AI bug draft fallback used: {e}")
@@ -396,6 +427,7 @@ async def generate_test_cases(
     module: str | None = None,
     selected_projects: list[str] | None = None,
     selected_modules: list[str] | None = None,
+    ai_config: dict | None = None,
 ):
     enriched_requirements, detected_module = build_context(
         requirements=requirements,
@@ -420,10 +452,10 @@ async def generate_test_cases(
     )
 
     logger.info(
-        f"Generating test cases | provider={AI_PROVIDER} | module={detected_module}"
+        f"Generating test cases | provider={(ai_config or {}).get('provider', AI_PROVIDER)} | module={detected_module}"
     )
 
-    raw = await asyncio.to_thread(_call_ai_sync, prompt)
+    raw = await asyncio.to_thread(_call_ai_sync, prompt, ai_config) if ai_config else await asyncio.to_thread(_call_ai_sync, prompt)
     test_cases, summary = _parse_response(raw)
 
     logger.info(f"Generated {summary.total} test cases")
@@ -432,6 +464,6 @@ async def generate_test_cases(
 
 
 # ── Generic AI helper ───────────────────────────────────────────────────
-async def enrich_with_ai(system: str, user: str) -> str:
+async def enrich_with_ai(system: str, user: str, ai_config: dict | None = None) -> str:
     prompt = f"{system}\n\n{user}"
-    return await asyncio.to_thread(_call_ai_sync, prompt)
+    return await asyncio.to_thread(_call_ai_sync, prompt, ai_config) if ai_config else await asyncio.to_thread(_call_ai_sync, prompt)

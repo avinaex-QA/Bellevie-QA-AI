@@ -4,6 +4,10 @@ Project context definitions used to guide AI test generation.
 from typing import Iterable
 
 
+MAX_SELECTED_PROJECTS = 50
+MAX_SELECTED_MODULES = 50
+
+
 VALID_PROJECTS = (
     "Resident APP",
     "Society Dashboard",
@@ -248,36 +252,43 @@ BELLEVIE_CONTEXTS: dict[tuple[str, str], tuple[str, ...]] = {
 
 def normalize_selected_projects(projects: Iterable[str] | None) -> list[str]:
     """
-    Trim, validate, deduplicate, and preserve configured project order.
-    Raises ValueError with a friendly message for invalid input.
+    Trim, deduplicate, and preserve user-selected project names.
+    Known Bellevie projects still receive enriched context; custom projects
+    are accepted so user-managed frontend options can flow through generation.
     """
-    raw_projects = [str(project).strip() for project in (projects or []) if str(project).strip()]
+    raw_projects = _normalize_user_values(projects)
     if not raw_projects:
         raise ValueError("Please select at least one project.")
-
-    invalid = sorted({project for project in raw_projects if project not in VALID_PROJECTS})
-    if invalid:
-        raise ValueError(f"Invalid project selection: {', '.join(invalid)}.")
-
-    selected = set(raw_projects)
-    return [project for project in VALID_PROJECTS if project in selected]
+    if len(raw_projects) > MAX_SELECTED_PROJECTS:
+        raise ValueError("Maximum 50 projects allowed.")
+    return raw_projects
 
 
 def normalize_selected_modules(modules: Iterable[str] | None) -> list[str]:
     """
-    Trim, validate, deduplicate, and preserve configured module order.
-    Raises ValueError with a friendly message for invalid input.
+    Trim, deduplicate, and preserve user-selected module names.
+    Known Bellevie modules still receive enriched context; custom modules are
+    accepted so user-managed frontend options can flow through generation.
     """
-    raw_modules = [str(module).strip() for module in (modules or []) if str(module).strip()]
+    raw_modules = _normalize_user_values(modules)
     if not raw_modules:
         raise ValueError("Please select at least one module.")
+    if len(raw_modules) > MAX_SELECTED_MODULES:
+        raise ValueError("Maximum 50 modules allowed.")
+    return raw_modules
 
-    invalid = sorted({module for module in raw_modules if module not in VALID_MODULES})
-    if invalid:
-        raise ValueError(f"Invalid module selection: {', '.join(invalid)}.")
 
-    selected = set(raw_modules)
-    return [module for module in VALID_MODULES if module in selected]
+def _normalize_user_values(values: Iterable[str] | None) -> list[str]:
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for value in values or []:
+        text = " ".join(str(value).strip().split())
+        key = text.casefold()
+        if not text or key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(text)
+    return cleaned
 
 
 def _merged_focus(selected: Iterable[str], context_map: dict[str, tuple[str, ...]]) -> tuple[list[str], list[str]]:
@@ -286,7 +297,10 @@ def _merged_focus(selected: Iterable[str], context_map: dict[str, tuple[str, ...
     seen: set[str] = set()
 
     for item_name in selected:
-        context_items = context_map[item_name]
+        context_items = context_map.get(item_name)
+        if not context_items:
+            detail_lines.append(f"- {item_name}: user-defined context")
+            continue
         detail_lines.append(f"- {item_name}: {', '.join(context_items)}")
         for context_item in context_items:
             key = context_item.lower()

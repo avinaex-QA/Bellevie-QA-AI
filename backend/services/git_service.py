@@ -27,17 +27,18 @@ def _parse_github_pr_url(url: str) -> tuple[str, str, str]:
     return match.group(1), match.group(2), match.group(3)
 
 
-def _get_headers() -> dict:
+def _get_headers(token: str | None = None) -> dict:
     headers = {
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     }
-    if settings.github_token:
-        headers["Authorization"] = f"Bearer {settings.github_token}"
+    configured_token = token or settings.github_token
+    if configured_token:
+        headers["Authorization"] = f"Bearer {configured_token}"
     return headers
 
 
-async def fetch_pr_diff(pr_url: str) -> dict:
+async def fetch_pr_diff(pr_url: str, token: str | None = None) -> dict:
     """
     Fetches PR metadata and diff from GitHub.
     Returns dict with keys: title, description, diff, files_changed, additions, deletions.
@@ -45,7 +46,7 @@ async def fetch_pr_diff(pr_url: str) -> dict:
     owner, repo, pr_number = _parse_github_pr_url(pr_url)
     logger.info(f"Fetching GitHub PR: {owner}/{repo}#{pr_number}")
 
-    headers = _get_headers()
+    headers = _get_headers(token)
 
     async with httpx.AsyncClient(timeout=20.0) as client:
         # Fetch PR metadata
@@ -82,7 +83,7 @@ async def fetch_pr_diff(pr_url: str) -> dict:
     }
 
 
-async def summarize_pr_as_requirements(pr_url: str) -> str:
+async def summarize_pr_as_requirements(pr_url: str, token: str | None = None, ai_config: dict | None = None) -> str:
     """
     High-level function: fetches a PR and returns a plain-text requirements
     summary ready for test case generation.
@@ -90,7 +91,7 @@ async def summarize_pr_as_requirements(pr_url: str) -> str:
     from backend.prompts.prompt_engine import prompt_engine
     from backend.services.ai_service import enrich_with_ai
 
-    pr_data = await fetch_pr_diff(pr_url)
+    pr_data = await fetch_pr_diff(pr_url, token)
 
     system_prompt, user_prompt = prompt_engine.build_diff_analysis_prompt(
         diff=pr_data["diff"],
@@ -103,7 +104,7 @@ async def summarize_pr_as_requirements(pr_url: str) -> str:
         f"\n\nFiles changed (+{pr_data['additions']} -{pr_data['deletions']}):\n{files_section}"
     )
 
-    requirements_text = await enrich_with_ai(system_prompt, user_prompt)
+    requirements_text = await enrich_with_ai(system_prompt, user_prompt, ai_config=ai_config)
 
     # Prefix with PR metadata
     header = (

@@ -10,6 +10,49 @@
 </head>
 <body>
 
+<!-- ── AUTH VIEW ───────────────────────────────────────────────────────────── -->
+<section class="auth-view" id="auth-view">
+  <div class="auth-panel">
+    <div class="auth-brand">
+      <svg class="brand-icon" viewBox="0 0 24 24" fill="none"><path d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" stroke="currentColor" stroke-width="2"/></svg>
+      <div>
+        <h1>AI QA Copilot</h1>
+        <p>Sign in to use your own Jira, ClickUp, GitHub, and AI credentials.</p>
+      </div>
+    </div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="login-tab-btn" type="button">Login</button>
+      <button class="auth-tab" id="signup-tab-btn" type="button">Sign up</button>
+    </div>
+    <div class="auth-form" id="login-form">
+      <input class="form-input" id="login-email" type="email" placeholder="Email" autocomplete="email" />
+      <input class="form-input" id="login-password" type="password" placeholder="Password" autocomplete="current-password" />
+      <button class="btn-primary" id="login-btn" type="button">Login</button>
+      <button class="btn-secondary" id="google-login-btn" type="button">Continue with Google</button>
+      <button class="link-btn" id="forgot-password-btn" type="button">Forgot password?</button>
+    </div>
+    <div class="auth-form hidden" id="signup-form">
+      <input class="form-input" id="signup-name" type="text" placeholder="Name" autocomplete="name" />
+      <input class="form-input" id="signup-email" type="email" placeholder="Email" autocomplete="email" />
+      <input class="form-input" id="signup-password" type="password" placeholder="Password" autocomplete="new-password" />
+      <input class="form-input" id="signup-confirm-password" type="password" placeholder="Confirm password" autocomplete="new-password" />
+      <div class="inline-error hidden" id="signup-error"></div>
+      <button class="btn-primary" id="signup-btn" type="button">Send Verification Code</button>
+    </div>
+    <div class="auth-form hidden" id="otp-form">
+      <p class="form-hint">Enter the 6-digit verification code sent to <strong id="otp-email-label"></strong>.</p>
+      <input class="form-input otp-input" id="otp-code" type="text" inputmode="numeric" maxlength="6" placeholder="483921" autocomplete="one-time-code" />
+      <div class="otp-row">
+        <span class="form-hint" id="otp-countdown">Code expires in 10:00</span>
+        <button class="link-btn" id="resend-otp-btn" type="button">Resend OTP</button>
+      </div>
+      <div class="inline-error hidden" id="otp-error"></div>
+      <button class="btn-primary" id="verify-otp-btn" type="button">Verify & Create Account</button>
+    </div>
+    <p class="form-hint auth-note">Credentials are encrypted and stored per user. Local OAuth requires client IDs in `.env`.</p>
+  </div>
+</section>
+
 <!-- ── HEADER ─────────────────────────────────────────────────────────────── -->
 <header class="header">
   <div class="header-inner">
@@ -22,10 +65,77 @@
     </div>
     <div class="header-actions">
       <a href="/docs" target="_blank" class="btn-ghost">API Docs</a>
+      <div class="profile-menu-wrap" id="profile-menu-wrap">
+        <button
+          class="profile-avatar"
+          id="profile-avatar-btn"
+          type="button"
+          aria-label="Open profile menu"
+          aria-haspopup="menu"
+          aria-expanded="false"
+        >
+          <span id="profile-avatar-letter">U</span>
+        </button>
+        <div class="profile-dropdown hidden" id="profile-dropdown" role="menu" aria-label="Profile menu">
+          <button class="profile-menu-item" id="profile-settings-item" type="button" role="menuitem">Settings</button>
+          <button class="profile-menu-item danger" id="profile-logout-item" type="button" role="menuitem">Logout</button>
+        </div>
+      </div>
       <div id="health-dot" class="health-dot" title="Checking API..."></div>
     </div>
   </div>
 </header>
+
+<!-- ── SETTINGS MODAL ─────────────────────────────────────────────────────── -->
+<div class="modal-overlay hidden" id="settings-modal">
+  <div class="settings-dialog">
+    <div class="settings-head">
+      <div>
+        <h3>Settings</h3>
+        <p>Connect your own integrations. Tokens are encrypted and never sent back to the browser.</p>
+      </div>
+      <button class="modal-close" id="close-settings-btn" type="button">×</button>
+    </div>
+    <div class="integration-grid" id="integration-status"></div>
+    <p class="form-hint">OAuth is preferred. Manual credential fields remain available as a local fallback.</p>
+    <div class="settings-forms">
+      <div class="settings-card">
+        <h4>Jira</h4>
+        <button class="btn-primary" id="connect-jira-oauth" type="button">Connect Jira</button>
+        <input class="form-input" id="jira-base-url" placeholder="https://company.atlassian.net" />
+        <input class="form-input" id="jira-email-setting" placeholder="Jira email" />
+        <input class="form-input" id="jira-token-setting" type="password" placeholder="Jira API token" />
+        <input class="form-input" id="jira-project-key-setting" placeholder="Bug project key, e.g. APP" />
+        <button class="btn-primary" id="save-jira-integration" type="button">Save Jira</button>
+      </div>
+      <div class="settings-card">
+        <h4>ClickUp</h4>
+        <button class="btn-primary" id="connect-clickup-oauth" type="button">Connect ClickUp</button>
+        <input class="form-input" id="clickup-token-setting" type="password" placeholder="ClickUp API token" />
+        <input class="form-input" id="clickup-base-setting" placeholder="https://api.clickup.com/api/v2" value="https://api.clickup.com/api/v2" />
+        <button class="btn-primary" id="save-clickup-integration" type="button">Save ClickUp</button>
+      </div>
+      <div class="settings-card">
+        <h4>GitHub</h4>
+        <button class="btn-primary" id="connect-github-oauth" type="button">Connect GitHub</button>
+        <input class="form-input" id="github-token-setting" type="password" placeholder="Personal access token" />
+        <button class="btn-secondary" id="save-github-integration" type="button">Save GitHub Token</button>
+      </div>
+      <div class="settings-card">
+        <h4>AI Provider</h4>
+        <select class="form-input" id="ai-provider-setting">
+          <option value="groq">Groq</option>
+          <option value="openai">OpenAI</option>
+          <option value="gemini">Gemini</option>
+          <option value="claude">Claude</option>
+          <option value="deepseek">DeepSeek</option>
+        </select>
+        <input class="form-input" id="ai-key-setting" type="password" placeholder="API key" />
+        <button class="btn-primary" id="save-ai-integration" type="button">Save AI Provider</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- ── MAIN LAYOUT ─────────────────────────────────────────────────────────── -->
 <main class="layout">
@@ -55,9 +165,10 @@
             type="text"
             id="project-search"
             class="multiselect-search"
-            placeholder="Search projects..."
+            placeholder="Type project name..."
             autocomplete="off"
           />
+          <button class="multiselect-add-btn" id="add-project-btn" type="button">Add project</button>
           <div class="multiselect-options" id="project-options"></div>
         </div>
       </div>
@@ -85,9 +196,10 @@
             type="text"
             id="module-search"
             class="multiselect-search"
-            placeholder="Search modules..."
+            placeholder="Type module name..."
             autocomplete="off"
           />
+          <button class="multiselect-add-btn" id="add-module-btn" type="button">Add module</button>
           <div class="multiselect-options" id="module-options"></div>
         </div>
       </div>
@@ -102,6 +214,10 @@
       <button class="tab-btn active" data-tab="jira">
         <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="2"/><path d="M8 12l3 3 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         Jira
+      </button>
+      <button class="tab-btn" data-tab="clickup">
+        <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M8 6h13M8 12h13M8 18h13M3 6l1.5 1.5L7 4.5M3 12l1.5 1.5L7 10.5M3 18l1.5 1.5L7 16.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        ClickUp
       </button>
       <button class="tab-btn" data-tab="document">
         <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -137,6 +253,30 @@
           </button>
         </div>
         <div id="jira-preview" class="preview-card hidden"></div>
+      </div>
+    </div>
+
+    <!-- ClickUp Tab -->
+    <div class="tab-panel hidden" id="tab-clickup">
+      <div class="form-group">
+        <label class="form-label">
+          ClickUp Task ID
+          <span class="label-hint">e.g. 86abc123</span>
+        </label>
+        <div class="input-with-btn">
+          <input
+            type="text"
+            id="clickup-task-id"
+            class="form-input"
+            placeholder="Enter ClickUp task ID..."
+            autocomplete="off"
+          />
+          <button class="btn-icon" id="fetch-clickup-btn" title="Fetch Task">
+            <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M21 21l-4.35-4.35M11 5a6 6 0 110 12 6 6 0 010-12z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <div id="clickup-preview" class="preview-card hidden"></div>
+        <p class="form-hint">Fetch a ClickUp task and generate coverage using selected project and module context.</p>
       </div>
     </div>
 

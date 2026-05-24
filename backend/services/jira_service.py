@@ -3,6 +3,7 @@ Jira REST API integration.
 Fetches ticket summary, description, acceptance criteria, and comments.
 """
 import re
+from dataclasses import dataclass
 import requests
 from requests.auth import HTTPBasicAuth
 
@@ -12,6 +13,17 @@ from backend.models.schemas import JiraBugCreateRequest, JiraBugCreateResponse, 
 from backend.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
+
+
+@dataclass
+class JiraCredentials:
+    base_url: str | None = None
+    email: str | None = None
+    api_token: str | None = None
+    bug_project_key: str | None = None
+    access_token: str | None = None
+    cloud_id: str | None = None
+    site_url: str | None = None
 
 # Common Jira custom field names for Acceptance Criteria
 AC_FIELDS = [
@@ -24,18 +36,44 @@ AC_FIELDS = [
 ]
 
 
-def _get_auth() -> HTTPBasicAuth:
-    if not settings.jira_email or not settings.jira_api_token:
+def _is_oauth(credentials: JiraCredentials | None = None) -> bool:
+    return bool(credentials and credentials.access_token and credentials.cloud_id)
+
+
+def _get_auth(credentials: JiraCredentials | None = None) -> HTTPBasicAuth | None:
+    if _is_oauth(credentials):
+        return None
+    email = credentials.email if credentials else settings.jira_email
+    api_token = credentials.api_token if credentials else settings.jira_api_token
+    if not email or not api_token:
         raise ValueError(
             "JIRA_EMAIL and JIRA_API_TOKEN must be set in .env to use Jira integration."
         )
-    return HTTPBasicAuth(settings.jira_email, settings.jira_api_token)
+    return HTTPBasicAuth(email, api_token)
 
 
-def _get_base_url() -> str:
-    if not settings.jira_base_url:
+def _get_base_url(credentials: JiraCredentials | None = None) -> str:
+    if _is_oauth(credentials):
+        return f"https://api.atlassian.com/ex/jira/{credentials.cloud_id}"
+    base_url = credentials.base_url if credentials else settings.jira_base_url
+    if not base_url:
         raise ValueError("JIRA_BASE_URL must be set in .env (e.g. https://company.atlassian.net)")
-    return settings.jira_base_url.rstrip("/")
+    return base_url.rstrip("/")
+
+
+def _headers(credentials: JiraCredentials | None = None, content_type: bool = False) -> dict:
+    headers = {"Accept": "application/json"}
+    if content_type:
+        headers["Content-Type"] = "application/json"
+    if _is_oauth(credentials):
+        headers["Authorization"] = f"Bearer {credentials.access_token}"
+    return headers
+
+
+def _browse_base_url(credentials: JiraCredentials | None = None) -> str:
+    if credentials and credentials.site_url:
+        return credentials.site_url.rstrip("/")
+    return _get_base_url(credentials)
 
 
 def _strip_jira_markup(text: str) -> str:
@@ -105,9 +143,10 @@ def _jira_field_value(value: str):
     return {"value": clean}
 
 
-def _infer_project_key(source_issue_key: str | None = None) -> str:
-    if settings.jira_bug_project_key:
-        return settings.jira_bug_project_key.strip().upper()
+def _infer_project_key(source_issue_key: str | None = None, credentials: JiraCredentials | None = None) -> str:
+    configured_project = credentials.bug_project_key if credentials else settings.jira_bug_project_key
+    if configured_project:
+        return configured_project.strip().upper()
     if source_issue_key and "-" in source_issue_key:
         return source_issue_key.split("-", 1)[0].strip().upper()
     raise ValueError("JIRA_BUG_PROJECT_KEY must be set to create Jira bugs.")
@@ -143,14 +182,14 @@ def _build_bug_description(request: JiraBugCreateRequest) -> str:
     return "\n\n".join(sections)
 
 
-def create_jira_bug(request: JiraBugCreateRequest) -> JiraBugCreateResponse:
+def create_jira_bug(request: JiraBugCreateRequest, credentials: JiraCredentials | None = None) -> JiraBugCreateResponse:
     """
     Create a Jira Bug from a failed test case using backend-only credentials.
     Custom field IDs are supplied by backend/config/jira_bug_fields.py or env.
     """
-    base_url = _get_base_url()
-    auth = _get_auth()
-    project_key = _infer_project_key(request.source_issue_key)
+    base_url = _get_base_url(credentials)
+    auth = _get_auth(credentials)
+    project_key = _infer_project_key(request.source_issue_key, credentials)
     field_map = get_bug_field_map()
 
     fields: dict = {
@@ -181,14 +220,14 @@ def create_jira_bug(request: JiraBugCreateRequest) -> JiraBugCreateResponse:
     response = requests.post(
         f"{base_url}/rest/api/3/issue",
         auth=auth,
-        headers={"Accept": "application/json", "Content-Type": "application/json"},
+        headers=_headers(credentials, content_type=True),
         json={"fields": fields},
         timeout=20,
     )
     response.raise_for_status()
     data = response.json()
     issue_key = data["key"]
-    issue_url = f"{base_url}/browse/{issue_key}"
+    issue_url = f"{_browse_base_url(credentials)}/browse/{issue_key}"
     return JiraBugCreateResponse(
         success=True,
         issue_key=issue_key,
@@ -215,14 +254,14 @@ def _build_raw_text(ticket: JiraTicket) -> str:
     return "\n".join(parts)
 
 
-def fetch_jira_ticket(ticket_id: str) -> JiraTicket:
+def fetch_jira_ticket(ticket_id: str, credentials: JiraCredentials | None = None) -> JiraTicket:
     """
     Fetches a Jira issue by ID and returns a structured JiraTicket.
     Raises ValueError on auth errors or missing configuration.
     Raises requests.HTTPError on API errors.
     """
-    base_url = _get_base_url()
-    auth = _get_auth()
+    base_url = _get_base_url(credentials)
+    auth = _get_auth(credentials)
 
     # Fetch main issue
     issue_url = f"{base_url}/rest/api/3/issue/{ticket_id}"
@@ -231,7 +270,7 @@ def fetch_jira_ticket(ticket_id: str) -> JiraTicket:
     resp = requests.get(
         issue_url,
         auth=auth,
-        headers={"Accept": "application/json"},
+        headers=_headers(credentials),
         timeout=15,
     )
     resp.raise_for_status()
@@ -264,7 +303,7 @@ def fetch_jira_ticket(ticket_id: str) -> JiraTicket:
     status = status_obj.get("name", "") if isinstance(status_obj, dict) else ""
 
     # Fetch comments
-    comments = _fetch_comments(base_url, auth, ticket_id, fields)
+    comments = _fetch_comments(base_url, auth, ticket_id, fields, credentials)
 
     ticket = JiraTicket(
         ticket_id=ticket_id.upper(),
@@ -281,7 +320,7 @@ def fetch_jira_ticket(ticket_id: str) -> JiraTicket:
     return ticket
 
 
-def _fetch_comments(base_url: str, auth: HTTPBasicAuth, ticket_id: str, fields: dict) -> list[str]:
+def _fetch_comments(base_url: str, auth: HTTPBasicAuth | None, ticket_id: str, fields: dict, credentials: JiraCredentials | None = None) -> list[str]:
     """Extract comments from embedded fields or fetch from comments API."""
     comments_data = fields.get("comment", {})
 
@@ -291,7 +330,7 @@ def _fetch_comments(base_url: str, auth: HTTPBasicAuth, ticket_id: str, fields: 
         # Fallback: call comments endpoint
         try:
             url = f"{base_url}/rest/api/3/issue/{ticket_id}/comment"
-            resp = requests.get(url, auth=auth, headers={"Accept": "application/json"}, timeout=10)
+            resp = requests.get(url, auth=auth, headers=_headers(credentials), timeout=10)
             resp.raise_for_status()
             raw_comments = resp.json().get("comments", [])
         except Exception as e:

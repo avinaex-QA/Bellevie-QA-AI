@@ -12,25 +12,26 @@ from backend.config.project_context import (
 from backend.services import ai_service
 
 
-def test_normalize_selected_projects_validates_and_orders_projects():
-    assert normalize_selected_projects(["VMS APP", "Resident APP", "VMS APP"]) == [
-        "Resident APP",
+def test_normalize_selected_projects_sanitizes_custom_values():
+    assert normalize_selected_projects([" VMS APP ", "Resident APP", "vms app", "Billing"]) == [
         "VMS APP",
+        "Resident APP",
+        "Billing",
     ]
 
 
-def test_normalize_selected_projects_rejects_invalid_values():
-    with pytest.raises(ValueError, match="Invalid project selection"):
-        normalize_selected_projects(["Resident APP", "Unknown Project"])
+def test_normalize_selected_projects_rejects_over_limit():
+    with pytest.raises(ValueError, match="Maximum 50 projects allowed"):
+        normalize_selected_projects([f"Project {index}" for index in range(51)])
 
 
-def test_normalize_selected_modules_validates_and_orders_modules():
-    assert normalize_selected_modules(["VMS", "Ticket", "Ticket"]) == ["Ticket", "VMS"]
+def test_normalize_selected_modules_sanitizes_custom_values():
+    assert normalize_selected_modules([" VMS ", "Ticket", "ticket", "Payments"]) == ["VMS", "Ticket", "Payments"]
 
 
-def test_normalize_selected_modules_rejects_invalid_values():
-    with pytest.raises(ValueError, match="Invalid module selection"):
-        normalize_selected_modules(["Ticket", "Unknown Module"])
+def test_normalize_selected_modules_rejects_over_limit():
+    with pytest.raises(ValueError, match="Maximum 50 modules allowed"):
+        normalize_selected_modules([f"Module {index}" for index in range(51)])
 
 
 def test_build_project_context_section_merges_multi_project_context():

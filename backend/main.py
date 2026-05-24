@@ -10,7 +10,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.config.settings import settings
-from backend.routers import generate, jira, export
+from backend.db import init_db
+from backend.routers import auth, clickup, generate, integrations, jira, export, oauth_aliases
 from backend.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -34,8 +35,12 @@ app.add_middleware(
 )
 
 # ── API Routers ───────────────────────────────────────────────────────────────
+app.include_router(auth.router,     prefix="/api/auth", tags=["Auth"])
+app.include_router(integrations.router, prefix="/api/integrations", tags=["Integrations"])
+app.include_router(oauth_aliases.router, tags=["OAuth Aliases"])
 app.include_router(generate.router, prefix="/api", tags=["Generate"])
 app.include_router(jira.router,     prefix="/api/jira", tags=["Jira"])
+app.include_router(clickup.router,  prefix="/api/clickup", tags=["ClickUp"])
 app.include_router(export.router,   prefix="/api/export", tags=["Export"])
 
 # ── Static Files (frontend) ───────────────────────────────────────────────────
@@ -66,12 +71,15 @@ async def health():
         "version": "1.0.0",
         "ai_provider": settings.ai_provider,
         "jira_configured": bool(settings.jira_base_url and settings.jira_api_token),
+        "clickup_configured": bool(settings.clickup_api_token),
         "github_configured": bool(settings.github_token),
+        "database": "local-sqlite" if settings.database_url.startswith("sqlite") else "external",
     }
 
 
 @app.on_event("startup")
 async def startup():
+    init_db()
     logger.info("AI Test Case Generator started")
     logger.info(f"AI Provider: {settings.ai_provider.upper()}")
     logger.info(f"Docs available at: http://localhost:{settings.app_port}/docs")

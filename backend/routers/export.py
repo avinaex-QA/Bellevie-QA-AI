@@ -9,7 +9,7 @@ import io
 from pathlib import Path
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional
@@ -22,6 +22,7 @@ from backend.services.excel_service import (
     load_history,
     remove_history_entry,
 )
+from backend.security.auth import get_current_user
 from backend.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -30,7 +31,7 @@ router = APIRouter()
 
 # ── POST /excel ────────────────────────────────────────────────────────────
 @router.post("/excel")
-async def export_to_excel(request: ExportRequest):
+async def export_to_excel(request: ExportRequest, current_user=Depends(get_current_user)):
     """
     Generate a formatted Excel file, save it to /exports/, update history,
     and stream it as a download response.
@@ -53,6 +54,7 @@ async def export_to_excel(request: ExportRequest):
             sheet_title=request.sheet_title,
             source_type=getattr(request, "source_type", "text"),
             module_detected=getattr(request, "module_detected", "General"),
+            user_id=current_user["id"],
         )
     except Exception as e:
         logger.error(f"Excel generation failed: {e}")
@@ -69,15 +71,15 @@ async def export_to_excel(request: ExportRequest):
 
 # ── GET /history ───────────────────────────────────────────────────────────
 @router.get("/history")
-async def get_export_history():
+async def get_export_history(current_user=Depends(get_current_user)):
     """Return the full list of past Excel exports (newest first)."""
-    history = load_history()
+    history = load_history(current_user["id"])
     return history
 
 
 # ── GET /download/{filename} ───────────────────────────────────────────────
 @router.get("/download/{filename}")
-async def download_saved_export(filename: str):
+async def download_saved_export(filename: str, current_user=Depends(get_current_user)):
     """Re-download a previously saved Excel file by name."""
     # Sanitize: strip any path separators to prevent directory traversal
     safe_name = Path(filename).name
@@ -98,7 +100,7 @@ async def download_saved_export(filename: str):
 
 # ── DELETE /{filename} ─────────────────────────────────────────────────────
 @router.delete("/{filename}")
-async def delete_export(filename: str):
+async def delete_export(filename: str, current_user=Depends(get_current_user)):
     """Delete a saved Excel file and remove its entry from history."""
     safe_name = Path(filename).name
     file_path = EXPORTS_DIR / safe_name
@@ -111,7 +113,7 @@ async def delete_export(filename: str):
     else:
         logger.warning(f"Delete requested for non-existent file: {safe_name}")
 
-    remove_history_entry(safe_name)
+    remove_history_entry(safe_name, current_user["id"])
     logger.info(f"Removed '{safe_name}' from history")
 
     return {

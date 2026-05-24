@@ -1,24 +1,45 @@
 """
 /api/jira endpoints — Jira ticket preview and validation.
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from backend.models.schemas import BugDraftRequest, BugDraftResponse, JiraBugCreateRequest, JiraBugCreateResponse, JiraTicket
 from backend.services.ai_service import generate_bug_draft
-from backend.services.jira_service import create_jira_bug, fetch_jira_ticket
+from backend.services.integration_store import get_integration, require_integration
+from backend.services.integration_runtime import require_runtime_integration
+from backend.services.jira_service import JiraCredentials, create_jira_bug, fetch_jira_ticket
+from backend.security.auth import get_current_user
 from backend.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 router = APIRouter()
 
 
+def _jira_credentials(user_id: str) -> JiraCredentials:
+    config = require_runtime_integration(user_id, "jira")
+    return JiraCredentials(
+        base_url=config.get("base_url") or config.get("site_url"),
+        email=config.get("email"),
+        api_token=config.get("api_token"),
+        bug_project_key=config.get("bug_project_key"),
+        access_token=config.get("access_token"),
+        cloud_id=config.get("cloud_id") or config.get("provider_workspace_id"),
+        site_url=config.get("site_url"),
+    )
+
+
+def _current_user_id(current_user) -> str | None:
+    return current_user.get("id") if isinstance(current_user, dict) else None
+
+
 @router.get("/fetch/{ticket_id}", response_model=JiraTicket)
-async def get_jira_ticket(ticket_id: str):
+async def get_jira_ticket(ticket_id: str, current_user=Depends(get_current_user)):
     """
     Fetch and preview a Jira ticket by ID.
     Used by the frontend to display ticket details before generating test cases.
     """
     try:
-        ticket = fetch_jira_ticket(ticket_id.strip().upper())
+        user_id = _current_user_id(current_user)
+        ticket = fetch_jira_ticket(ticket_id.strip().upper(), _jira_credentials(user_id) if user_id else None)
         return ticket
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -42,35 +63,33 @@ async def get_jira_ticket(ticket_id: str):
 
 
 @router.get("/validate")
-async def validate_jira_config():
+async def validate_jira_config(current_user=Depends(get_current_user)):
     """
     Check whether Jira credentials are configured (does not make an API call).
     """
-    from backend.config.settings import settings
-    configured = bool(
-        settings.jira_base_url
-        and settings.jira_email
-        and settings.jira_api_token
-    )
+    user_id = _current_user_id(current_user)
+    config = get_integration(user_id, "jira") if user_id else {}
+    configured = bool((config.get("base_url") and config.get("email") and config.get("api_token")) or (config.get("access_token") and config.get("cloud_id")))
     return {
         "configured": configured,
-        "base_url": settings.jira_base_url or None,
-        "email": settings.jira_email or None,
+        "base_url": config.get("base_url") or config.get("site_url"),
+        "email": config.get("email") or config.get("provider_account_email"),
     }
 
 
 @router.post("/bug-draft", response_model=BugDraftResponse)
-async def create_bug_draft(request: BugDraftRequest):
+async def create_bug_draft(request: BugDraftRequest, current_user=Depends(get_current_user)):
     """Generate an editable Jira bug draft for a failed test case."""
     if request.test_case.jira_bug_id:
         raise HTTPException(status_code=409, detail="Bug already raised for this test case.")
     if request.test_case.status.lower() != "failed":
         raise HTTPException(status_code=400, detail="Bug can be raised only for failed test cases.")
-    return await generate_bug_draft(request)
+    user_id = _current_user_id(current_user)
+    return await generate_bug_draft(request, ai_config=get_integration(user_id, "ai") if user_id else None)
 
 
 @router.post("/create-bug", response_model=JiraBugCreateResponse)
-async def create_bug(request: JiraBugCreateRequest):
+async def create_bug(request: JiraBugCreateRequest, current_user=Depends(get_current_user)):
     """Create a Jira Bug using backend Jira credentials only."""
     if not request.bug_summary.strip():
         raise HTTPException(status_code=400, detail="Bug Summary is required.")
@@ -84,7 +103,8 @@ async def create_bug(request: JiraBugCreateRequest):
         raise HTTPException(status_code=400, detail="Expected Result is required.")
 
     try:
-        return create_jira_bug(request)
+        user_id = _current_user_id(current_user)
+        return create_jira_bug(request, _jira_credentials(user_id) if user_id else None)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

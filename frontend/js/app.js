@@ -13,6 +13,8 @@ const state = {
   selectedFile:  null,
   selectedProjects: [],
   selectedModules: [],
+  projectOptions: [],
+  moduleOptions: [],
   isLoading:     false,
   currentView:   'testcases',  // 'testcases' | 'history'
   lastSummary:   null,
@@ -21,28 +23,12 @@ const state = {
   lastSelectedModules: [],
   lastSourceInfo: {},
   activeBugTestCaseId: null,
+  currentUser: null,
 };
 
-const PROJECT_OPTIONS = [
-  'Resident APP',
-  'Society Dashboard',
-  'VMS APP',
-  'Society Admin APP',
-  'Marketplace Brand Dashboard',
-  'Marketplace Master Dashboard',
-];
-
-const MODULE_OPTIONS = [
-  'Onboarding',
-  'Ticket',
-  'Notice',
-  'Event',
-  'Amenity',
-  'Billing & Account',
-  'VMS',
-  'Documents',
-  'Marketplace',
-];
+const PROJECT_STORAGE_KEY = 'ai-testcase-generator-project-options-v1';
+const MODULE_STORAGE_KEY = 'ai-testcase-generator-module-options-v1';
+const MAX_MANAGED_OPTIONS = 50;
 
 // ── DOM refs ───────────────────────────────────────────────────────────────
 const $ = (id) => document.getElementById(id);
@@ -55,6 +41,7 @@ const els = {
   projectToggle:  $('project-toggle'),
   projectMenu:    $('project-menu'),
   projectSearch:  $('project-search'),
+  addProjectBtn:  $('add-project-btn'),
   projectOptions: $('project-options'),
   selectedProjects: $('selected-projects'),
   projectHelper:  $('project-helper'),
@@ -63,6 +50,7 @@ const els = {
   moduleToggle:   $('module-toggle'),
   moduleMenu:     $('module-menu'),
   moduleSearch:   $('module-search'),
+  addModuleBtn:   $('add-module-btn'),
   moduleOptions:  $('module-options'),
   selectedModules: $('selected-modules'),
   moduleHelper:   $('module-helper'),
@@ -70,6 +58,9 @@ const els = {
   jiraId:         $('jira-id'),
   fetchJiraBtn:   $('fetch-jira-btn'),
   jiraPreview:    $('jira-preview'),
+  clickupTaskId:  $('clickup-task-id'),
+  fetchClickupBtn: $('fetch-clickup-btn'),
+  clickupPreview: $('clickup-preview'),
   fileInput:      $('file-input'),
   dropzone:       $('dropzone'),
   fileSelected:   $('file-selected'),
@@ -141,10 +132,105 @@ const els = {
   tabTcCount:     $('tab-tc-count'),
   tabHistCount:   $('tab-hist-count'),
   histCountBadge: $('history-count-badge'),
+  authView: $('auth-view'),
+  loginTabBtn: $('login-tab-btn'),
+  signupTabBtn: $('signup-tab-btn'),
+  loginForm: $('login-form'),
+  signupForm: $('signup-form'),
+  loginEmail: $('login-email'),
+  loginPassword: $('login-password'),
+  loginBtn: $('login-btn'),
+  signupName: $('signup-name'),
+  signupEmail: $('signup-email'),
+  signupPassword: $('signup-password'),
+  signupConfirmPassword: $('signup-confirm-password'),
+  signupError: $('signup-error'),
+  signupBtn: $('signup-btn'),
+  otpForm: $('otp-form'),
+  otpEmailLabel: $('otp-email-label'),
+  otpCode: $('otp-code'),
+  otpCountdown: $('otp-countdown'),
+  otpError: $('otp-error'),
+  resendOtpBtn: $('resend-otp-btn'),
+  verifyOtpBtn: $('verify-otp-btn'),
+  googleLoginBtn: $('google-login-btn'),
+  forgotPasswordBtn: $('forgot-password-btn'),
+  profileMenuWrap: $('profile-menu-wrap'),
+  profileAvatarBtn: $('profile-avatar-btn'),
+  profileAvatarLetter: $('profile-avatar-letter'),
+  profileDropdown: $('profile-dropdown'),
+  profileSettingsItem: $('profile-settings-item'),
+  profileLogoutItem: $('profile-logout-item'),
+  settingsModal: $('settings-modal'),
+  closeSettingsBtn: $('close-settings-btn'),
+  integrationStatus: $('integration-status'),
+  jiraBaseUrlSetting: $('jira-base-url'),
+  jiraEmailSetting: $('jira-email-setting'),
+  jiraTokenSetting: $('jira-token-setting'),
+  jiraProjectKeySetting: $('jira-project-key-setting'),
+  saveJiraIntegration: $('save-jira-integration'),
+  clickupTokenSetting: $('clickup-token-setting'),
+  clickupBaseSetting: $('clickup-base-setting'),
+  saveClickupIntegration: $('save-clickup-integration'),
+  connectClickupOauth: $('connect-clickup-oauth'),
+  githubTokenSetting: $('github-token-setting'),
+  saveGithubIntegration: $('save-github-integration'),
+  connectGithubOauth: $('connect-github-oauth'),
+  connectJiraOauth: $('connect-jira-oauth'),
+  aiProviderSetting: $('ai-provider-setting'),
+  aiKeySetting: $('ai-key-setting'),
+  saveAiIntegration: $('save-ai-integration'),
 };
 
 const API_BASE = window.location.origin;
 const SESSION_STORAGE_KEY = 'ai-testcase-generator-session-v2';
+let otpTimer = null;
+let pendingSignupEmail = '';
+
+// ── Auth / Settings listeners ────────────────────────────────────────────
+els.loginTabBtn.addEventListener('click', () => switchAuthTab('login'));
+els.signupTabBtn.addEventListener('click', () => switchAuthTab('signup'));
+els.loginBtn.addEventListener('click', handleLogin);
+els.signupBtn.addEventListener('click', handleSignup);
+els.verifyOtpBtn.addEventListener('click', handleVerifyOtp);
+els.resendOtpBtn.addEventListener('click', handleResendOtp);
+els.googleLoginBtn.addEventListener('click', startGoogleLogin);
+els.forgotPasswordBtn.addEventListener('click', () => showToast('Password reset email flow is ready for SMTP integration in the next backend step.', 'info'));
+els.profileAvatarBtn.addEventListener('click', toggleProfileMenu);
+els.profileSettingsItem.addEventListener('click', openSettingsModal);
+els.profileLogoutItem.addEventListener('click', handleLogout);
+els.closeSettingsBtn.addEventListener('click', () => els.settingsModal.classList.add('hidden'));
+els.saveJiraIntegration.addEventListener('click', () => saveIntegration('jira', {
+  base_url: els.jiraBaseUrlSetting.value.trim(),
+  email: els.jiraEmailSetting.value.trim(),
+  api_token: els.jiraTokenSetting.value,
+  bug_project_key: els.jiraProjectKeySetting.value.trim(),
+}));
+els.saveClickupIntegration.addEventListener('click', () => saveIntegration('clickup', {
+  api_token: els.clickupTokenSetting.value,
+  api_base: els.clickupBaseSetting.value.trim() || 'https://api.clickup.com/api/v2',
+}));
+els.saveGithubIntegration.addEventListener('click', () => saveIntegration('github', {
+  token: els.githubTokenSetting.value,
+}));
+els.saveAiIntegration.addEventListener('click', () => saveIntegration('ai', {
+  provider: els.aiProviderSetting.value,
+  api_key: els.aiKeySetting.value,
+}));
+els.connectGithubOauth.addEventListener('click', () => startOAuth('github'));
+els.connectClickupOauth.addEventListener('click', () => startOAuth('clickup'));
+els.connectJiraOauth.addEventListener('click', () => startOAuth('jira'));
+document.addEventListener('click', (event) => {
+  if (!els.profileMenuWrap.contains(event.target)) closeProfileMenu();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeProfileMenu();
+  if (event.key === 'ArrowDown' && document.activeElement === els.profileAvatarBtn) {
+    event.preventDefault();
+    openProfileMenu();
+    els.profileSettingsItem.focus();
+  }
+});
 
 // ── API helpers ────────────────────────────────────────────────────────────
 async function apiGet(path) {
@@ -154,6 +240,314 @@ async function apiGet(path) {
     throw new Error(err.detail || `HTTP ${res.status}`);
   }
   return res.json();
+}
+
+async function apiJson(path, payload, method = 'POST') {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: payload ? JSON.stringify(payload) : undefined,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    if (res.status === 401) showAuthView();
+    throw new Error(err.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+function showAuthView() {
+  closeProfileMenu();
+  els.authView.classList.remove('hidden');
+}
+
+function showAppView(user) {
+  state.currentUser = user;
+  els.authView.classList.add('hidden');
+  updateProfileAvatar(user);
+}
+
+function getProfileInitial(user) {
+  const source = (user?.name || user?.email || 'U').trim();
+  return (source[0] || 'U').toUpperCase();
+}
+
+function updateProfileAvatar(user) {
+  els.profileAvatarLetter.textContent = getProfileInitial(user);
+  const label = user?.name || user?.email || 'User';
+  els.profileAvatarBtn.setAttribute('aria-label', `Open profile menu for ${label}`);
+}
+
+function openSettingsModal() {
+  closeProfileMenu();
+  els.settingsModal.classList.remove('hidden');
+  loadIntegrationStatus();
+}
+
+function openProfileMenu() {
+  els.profileDropdown.classList.remove('hidden');
+  els.profileAvatarBtn.setAttribute('aria-expanded', 'true');
+}
+
+function closeProfileMenu() {
+  if (!els.profileDropdown) return;
+  els.profileDropdown.classList.add('hidden');
+  els.profileAvatarBtn?.setAttribute('aria-expanded', 'false');
+}
+
+function toggleProfileMenu(event) {
+  event.stopPropagation();
+  if (els.profileDropdown.classList.contains('hidden')) openProfileMenu();
+  else closeProfileMenu();
+}
+
+function switchAuthTab(tab) {
+  const login = tab === 'login';
+  els.loginTabBtn.classList.toggle('active', login);
+  els.signupTabBtn.classList.toggle('active', !login);
+  els.loginForm.classList.toggle('hidden', !login);
+  els.signupForm.classList.toggle('hidden', login);
+  els.otpForm.classList.add('hidden');
+  clearInlineError(els.signupError);
+  clearInlineError(els.otpError);
+}
+
+function isValidEmail(email) {
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
+}
+
+function validateSignupPassword(password) {
+  return password.length >= 8 && /[A-Z]/.test(password) && /[a-z]/.test(password) && /\d/.test(password) && /[^A-Za-z0-9]/.test(password);
+}
+
+function showInlineError(el, message) {
+  el.textContent = message;
+  el.classList.remove('hidden');
+}
+
+function clearInlineError(el) {
+  el.textContent = '';
+  el.classList.add('hidden');
+}
+
+async function requireCurrentUser() {
+  try {
+    const user = await apiGet('/api/auth/me');
+    showAppView(user);
+    return user;
+  } catch {
+    showAuthView();
+    return null;
+  }
+}
+
+async function handleLogin() {
+  const email = els.loginEmail.value.trim();
+  const password = els.loginPassword.value;
+  if (!email) return showToast('Email is required.', 'error');
+  if (!isValidEmail(email)) return showToast('Please enter a valid email address.', 'error');
+  if (!password) return showToast('Password is required.', 'error');
+  if (password.length < 8) return showToast('Password must meet minimum requirements.', 'error');
+  try {
+    const data = await apiJson('/api/auth/login', {
+      email,
+      password,
+    });
+    showAppView(data.user);
+    showToast('Logged in successfully.', 'success');
+    loadIntegrationStatus();
+    loadHistoryCount();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function handleSignup() {
+  const name = els.signupName.value.trim();
+  const email = els.signupEmail.value.trim();
+  const password = els.signupPassword.value;
+  const confirmPassword = els.signupConfirmPassword.value;
+  clearInlineError(els.signupError);
+
+  if (!name) return showInlineError(els.signupError, 'Name is required.');
+  if (!email) return showInlineError(els.signupError, 'Email is required.');
+  if (!isValidEmail(email)) return showInlineError(els.signupError, 'Please enter a valid email address.');
+  if (!password) return showInlineError(els.signupError, 'Password is required.');
+  if (!validateSignupPassword(password)) return showInlineError(els.signupError, 'Password must contain uppercase, lowercase, number, and special character.');
+  if (password !== confirmPassword) return showInlineError(els.signupError, 'Passwords do not match.');
+
+  els.signupBtn.disabled = true;
+  try {
+    const data = await apiJson('/api/auth/signup/start', {
+      name,
+      email,
+      password,
+      confirm_password: confirmPassword,
+    });
+    pendingSignupEmail = data.email;
+    els.otpEmailLabel.textContent = data.email;
+    els.signupForm.classList.add('hidden');
+    els.otpForm.classList.remove('hidden');
+    startOtpCountdown(data.expires_in_seconds || 600);
+    showToast('Verification code sent', 'success');
+  } catch (err) {
+    showInlineError(els.signupError, err.message);
+  } finally {
+    els.signupBtn.disabled = false;
+  }
+}
+
+function startOtpCountdown(seconds) {
+  if (otpTimer) clearInterval(otpTimer);
+  let remaining = seconds;
+  const render = () => {
+    const mins = String(Math.floor(remaining / 60)).padStart(2, '0');
+    const secs = String(remaining % 60).padStart(2, '0');
+    els.otpCountdown.textContent = remaining > 0 ? `Code expires in ${mins}:${secs}` : 'Code expired';
+  };
+  render();
+  otpTimer = setInterval(() => {
+    remaining -= 1;
+    render();
+    if (remaining <= 0) clearInterval(otpTimer);
+  }, 1000);
+}
+
+async function handleVerifyOtp() {
+  clearInlineError(els.otpError);
+  const otp = els.otpCode.value.trim();
+  if (!/^\d{6}$/.test(otp)) return showInlineError(els.otpError, 'Invalid OTP');
+  els.verifyOtpBtn.disabled = true;
+  try {
+    const data = await apiJson('/api/auth/signup/verify', { email: pendingSignupEmail, otp });
+    showAppView(data.user);
+    showToast('Email verified. Account created.', 'success');
+    loadIntegrationStatus();
+    loadHistoryCount();
+  } catch (err) {
+    showInlineError(els.otpError, err.message);
+  } finally {
+    els.verifyOtpBtn.disabled = false;
+  }
+}
+
+async function handleResendOtp() {
+  clearInlineError(els.otpError);
+  try {
+    const data = await apiJson('/api/auth/signup/resend', { email: pendingSignupEmail });
+    startOtpCountdown(data.expires_in_seconds || 600);
+    showToast('OTP resent', 'success');
+  } catch (err) {
+    showInlineError(els.otpError, err.message);
+  }
+}
+
+async function handleLogout() {
+  closeProfileMenu();
+  try {
+    await apiJson('/api/auth/logout', {});
+  } catch {}
+  state.currentUser = null;
+  localStorage.removeItem(SESSION_STORAGE_KEY);
+  showAuthView();
+  showToast('Logged out.', 'success');
+}
+
+async function startGoogleLogin() {
+  try {
+    const data = await apiGet('/api/auth/google/start');
+    if (!data.configured) {
+      showToast(data.message || 'Google OAuth is not configured locally. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env.', 'error');
+      return;
+    }
+    if (!data.authorization_url) {
+      showToast('Google sign-in failed. Please try again.', 'error');
+      return;
+    }
+    window.location.href = data.authorization_url;
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function loadIntegrationStatus() {
+  if (!state.currentUser) return;
+  try {
+    const data = await apiGet('/api/integrations');
+    els.integrationStatus.innerHTML = (data.integrations || []).map((item) => `
+      <div class="integration-card">
+        <h4>${escapeHtml(item.provider.toUpperCase())}</h4>
+        <span class="status-pill ${item.connected ? '' : 'off'}">${item.connected ? 'Connected' : 'Not Connected'}</span>
+        <div class="preview-meta" style="margin-top:6px;">
+          ${item.display?.email ? `Connected as: ${escapeHtml(item.display.email)}<br>` : ''}
+          ${item.display?.username ? `Connected as: ${escapeHtml(item.display.username)}<br>` : ''}
+          ${item.display?.workspace ? `Workspace: ${escapeHtml(item.display.workspace)}<br>` : ''}
+          ${item.display?.provider ? `Provider: ${escapeHtml(item.display.provider)}<br>` : ''}
+          ${item.auth_type ? `Auth: ${escapeHtml(item.auth_type)}` : ''}
+        </div>
+        <div class="integration-actions">
+          ${item.provider !== 'ai' ? `<button class="btn-secondary" type="button" onclick="startOAuth('${escapeHtml(item.provider)}')">${item.connected ? 'Reconnect' : 'Connect'}</button>` : ''}
+          ${item.connected ? `<button class="btn-secondary" type="button" onclick="testIntegration('${escapeHtml(item.provider)}')">Test</button><button class="btn-secondary" type="button" onclick="disconnectIntegration('${escapeHtml(item.provider)}')">Disconnect</button>` : ''}
+        </div>
+      </div>
+    `).join('');
+  } catch (err) {
+    els.integrationStatus.innerHTML = `<div class="integration-card"><span style="color:var(--high)">${escapeHtml(err.message)}</span></div>`;
+  }
+}
+
+async function testIntegration(provider) {
+  try {
+    const data = await apiJson(`/api/integrations/${provider}/test`, {});
+    showToast(data.message, 'success');
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function disconnectIntegration(provider) {
+  try {
+    const data = await apiJson(`/api/integrations/${provider}`, null, 'DELETE');
+    showToast(data.message, 'success');
+    loadIntegrationStatus();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function saveIntegration(provider, payload) {
+  try {
+    const data = await apiJson(`/api/integrations/${provider}`, payload);
+    showToast(data.message, 'success');
+    loadIntegrationStatus();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function startOAuth(provider) {
+  try {
+    const data = await apiGet(`/api/integrations/oauth/${provider}/start`);
+    if (!data.configured) {
+      showToast(`${provider.toUpperCase()} OAuth is not configured locally. Add OAuth client values in .env.`, 'error');
+      return;
+    }
+    window.location.href = data.authorization_url;
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function loadHistoryCount() {
+  try {
+    const data = await apiGet('/api/export/history');
+    const count = (data.exports || []).length;
+    if (els.histCountBadge) els.histCountBadge.textContent = count;
+    if (els.tabHistCount)   els.tabHistCount.textContent   = count;
+  } catch {
+    if (els.histCountBadge) els.histCountBadge.textContent = '0';
+    if (els.tabHistCount)   els.tabHistCount.textContent   = '0';
+  }
 }
 
 // ── Health Check ──────────────────────────────────────────────────────────
@@ -198,6 +592,7 @@ function toggleHistoryPanel() {
 function hasRequirementSource() {
   return !!(
     els.jiraId.value.trim() ||
+    els.clickupTaskId.value.trim() ||
     els.textInput.value.trim() ||
     els.githubUrl.value.trim() ||
     state.selectedFile
@@ -225,7 +620,7 @@ function updateGenerateButton() {
     els.moduleHelper.textContent = 'Select at least one module before generation.';
     els.moduleHelper.classList.add('warning');
   } else if (!hasSource) {
-    els.moduleHelper.textContent = 'Please select Project, Module, and at least one requirement source (Jira, Text, Document, or GitHub PR).';
+    els.moduleHelper.textContent = 'Please select Project, Module, and at least one requirement source (Jira, ClickUp, Text, Document, or GitHub PR).';
     els.moduleHelper.classList.add('warning');
   } else {
     els.moduleHelper.textContent = 'Module context will guide feature-specific Bellevie coverage.';
@@ -233,7 +628,7 @@ function updateGenerateButton() {
   }
 
   if (hasProjects && !hasSource) {
-    els.projectHelper.textContent = 'Please select Project, Module, and at least one requirement source (Jira, Text, Document, or GitHub PR).';
+    els.projectHelper.textContent = 'Please select Project, Module, and at least one requirement source (Jira, ClickUp, Text, Document, or GitHub PR).';
     els.projectHelper.classList.add('warning');
   }
 }
@@ -256,9 +651,132 @@ function toggleProjectMenu() {
   else closeProjectMenu();
 }
 
+function normalizeManagedOption(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ');
+}
+
+function optionKey(value) {
+  return normalizeManagedOption(value).toLowerCase();
+}
+
+function getManagedOptions(kind) {
+  return kind === 'project' ? state.projectOptions : state.moduleOptions;
+}
+
+function setManagedOptions(kind, options) {
+  if (kind === 'project') state.projectOptions = options;
+  else state.moduleOptions = options;
+}
+
+function getManagedStorageKey(kind) {
+  return kind === 'project' ? PROJECT_STORAGE_KEY : MODULE_STORAGE_KEY;
+}
+
+function getManagedSearchEl(kind) {
+  return kind === 'project' ? els.projectSearch : els.moduleSearch;
+}
+
+function getManagedHelperEl(kind) {
+  return kind === 'project' ? els.projectHelper : els.moduleHelper;
+}
+
+function getManagedLabel(kind) {
+  return kind === 'project' ? 'project' : 'module';
+}
+
+function loadManagedOptions(kind) {
+  try {
+    const stored = JSON.parse(localStorage.getItem(getManagedStorageKey(kind)) || '[]');
+    const options = Array.isArray(stored) ? stored : [];
+    setManagedOptions(kind, dedupeManagedOptions(options).slice(0, MAX_MANAGED_OPTIONS));
+  } catch {
+    setManagedOptions(kind, []);
+  }
+}
+
+function saveManagedOptions(kind) {
+  localStorage.setItem(getManagedStorageKey(kind), JSON.stringify(getManagedOptions(kind)));
+}
+
+function dedupeManagedOptions(options) {
+  const seen = new Set();
+  const cleaned = [];
+  options.forEach((option) => {
+    const value = normalizeManagedOption(option);
+    const key = optionKey(value);
+    if (!value || seen.has(key)) return;
+    seen.add(key);
+    cleaned.push(value);
+  });
+  return cleaned;
+}
+
+function setManagedValidation(kind, message) {
+  const helper = getManagedHelperEl(kind);
+  helper.textContent = message;
+  helper.classList.add('warning');
+}
+
+function clearManagedValidation(kind) {
+  getManagedHelperEl(kind).classList.remove('warning');
+  updateGenerateButton();
+}
+
+function addManagedOption(kind) {
+  const label = getManagedLabel(kind);
+  const searchEl = getManagedSearchEl(kind);
+  const value = normalizeManagedOption(searchEl.value);
+  const options = getManagedOptions(kind);
+
+  if (!value) {
+    setManagedValidation(kind, `Enter a ${label} name before adding.`);
+    return;
+  }
+  if (options.length >= MAX_MANAGED_OPTIONS) {
+    setManagedValidation(kind, kind === 'project' ? 'Maximum 50 projects allowed' : 'Maximum 50 modules allowed');
+    return;
+  }
+  if (options.some((option) => optionKey(option) === optionKey(value))) {
+    setManagedValidation(kind, `This ${label} already exists.`);
+    return;
+  }
+
+  const nextOptions = [...options, value].sort((a, b) => a.localeCompare(b));
+  setManagedOptions(kind, nextOptions);
+  saveManagedOptions(kind);
+  searchEl.value = '';
+
+  if (kind === 'project') {
+    state.selectedProjects = [...state.selectedProjects, value];
+    renderProjectSelector();
+  } else {
+    state.selectedModules = [...state.selectedModules, value];
+    renderModuleSelector();
+  }
+  clearManagedValidation(kind);
+}
+
+function deleteManagedOption(kind, value, event) {
+  event.stopPropagation();
+  const cleanValue = normalizeManagedOption(value);
+  const key = optionKey(cleanValue);
+  setManagedOptions(kind, getManagedOptions(kind).filter((option) => optionKey(option) !== key));
+  saveManagedOptions(kind);
+
+  if (kind === 'project') {
+    state.selectedProjects = state.selectedProjects.filter((item) => optionKey(item) !== key);
+    renderProjectSelector();
+  } else {
+    state.selectedModules = state.selectedModules.filter((item) => optionKey(item) !== key);
+    renderModuleSelector();
+  }
+  updateGenerateButton();
+}
+
 function toggleProjectSelection(project) {
-  if (state.selectedProjects.includes(project)) {
-    state.selectedProjects = state.selectedProjects.filter((item) => item !== project);
+  const key = optionKey(project);
+  if (state.selectedProjects.some((item) => optionKey(item) === key)) {
+    state.selectedProjects = state.selectedProjects.filter((item) => optionKey(item) !== key);
   } else {
     state.selectedProjects = [...state.selectedProjects, project];
   }
@@ -268,7 +786,8 @@ function toggleProjectSelection(project) {
 
 function removeProject(project, event) {
   event.stopPropagation();
-  state.selectedProjects = state.selectedProjects.filter((item) => item !== project);
+  const key = optionKey(project);
+  state.selectedProjects = state.selectedProjects.filter((item) => optionKey(item) !== key);
   renderProjectSelector();
   updateGenerateButton();
 }
@@ -285,35 +804,64 @@ function renderProjectSelector() {
     els.selectedProjects.innerHTML = '<span class="multiselect-placeholder">Search and select project context...</span>';
   } else {
     els.selectedProjects.innerHTML = state.selectedProjects.map((project) => `
-      <span class="project-chip">
+      <span class="project-chip" data-project-chip="${escapeHtml(project)}">
         ${escapeHtml(project)}
-        <button type="button" onclick="removeProject('${escapeHtml(project)}', event)" title="Remove ${escapeHtml(project)}">×</button>
+        <button type="button" class="remove-project-chip" data-project="${escapeHtml(project)}" title="Remove ${escapeHtml(project)}">×</button>
       </span>
     `).join('');
   }
 
   const query = els.projectSearch.value.trim().toLowerCase();
-  const options = PROJECT_OPTIONS.filter((project) => project.toLowerCase().includes(query));
+  const options = state.projectOptions.filter((project) => project.toLowerCase().includes(query));
   els.projectOptions.innerHTML = options.length
     ? options.map((project) => {
-        const selected = state.selectedProjects.includes(project);
+        const selected = state.selectedProjects.some((item) => optionKey(item) === optionKey(project));
         return `
-          <button class="project-option ${selected ? 'selected' : ''}" type="button" data-project="${escapeHtml(project)}">
+          <div class="project-option ${selected ? 'selected' : ''}" role="button" tabindex="0" data-project="${escapeHtml(project)}">
             <span>${escapeHtml(project)}</span>
-            <span class="option-check">${selected ? '✓' : ''}</span>
-          </button>`;
+            <span class="project-option-actions">
+              <span class="option-check">${selected ? '✓' : ''}</span>
+              <button class="delete-option-btn" type="button" data-delete-project="${escapeHtml(project)}" aria-label="Delete ${escapeHtml(project)}">×</button>
+            </span>
+          </div>`;
       }).join('')
-    : '<div class="project-option" style="cursor:default;">No matching projects</div>';
+    : `<div class="managed-empty-state">${query ? 'No matching projects. Add it to use it.' : 'No projects yet. Type a project name and add it.'}</div>`;
 
   els.clearProjectsBtn.classList.toggle('hidden', state.selectedProjects.length === 0);
 }
 
 els.projectToggle.addEventListener('click', toggleProjectMenu);
-els.projectSearch.addEventListener('input', renderProjectSelector);
+els.projectSearch.addEventListener('input', () => {
+  clearManagedValidation('project');
+  renderProjectSelector();
+});
+els.projectSearch.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    addManagedOption('project');
+  }
+});
+els.addProjectBtn.addEventListener('click', () => addManagedOption('project'));
 els.clearProjectsBtn.addEventListener('click', clearProjects);
+els.selectedProjects.addEventListener('click', (event) => {
+  const removeBtn = event.target.closest('.remove-project-chip[data-project]');
+  if (removeBtn) removeProject(removeBtn.dataset.project, event);
+});
 els.projectOptions.addEventListener('click', (event) => {
+  const deleteBtn = event.target.closest('[data-delete-project]');
+  if (deleteBtn) {
+    deleteManagedOption('project', deleteBtn.dataset.deleteProject, event);
+    return;
+  }
   const option = event.target.closest('.project-option[data-project]');
   if (option) toggleProjectSelection(option.dataset.project);
+});
+els.projectOptions.addEventListener('keydown', (event) => {
+  if (!['Enter', ' '].includes(event.key)) return;
+  const option = event.target.closest('.project-option[data-project]');
+  if (!option || event.target.closest('[data-delete-project]')) return;
+  event.preventDefault();
+  toggleProjectSelection(option.dataset.project);
 });
 document.addEventListener('click', (event) => {
   if (!els.projectMultiselect.contains(event.target)) closeProjectMenu();
@@ -341,8 +889,9 @@ function toggleModuleMenu() {
 }
 
 function toggleModuleSelection(moduleName) {
-  if (state.selectedModules.includes(moduleName)) {
-    state.selectedModules = state.selectedModules.filter((item) => item !== moduleName);
+  const key = optionKey(moduleName);
+  if (state.selectedModules.some((item) => optionKey(item) === key)) {
+    state.selectedModules = state.selectedModules.filter((item) => optionKey(item) !== key);
   } else {
     state.selectedModules = [...state.selectedModules, moduleName];
   }
@@ -352,7 +901,8 @@ function toggleModuleSelection(moduleName) {
 
 function removeModule(moduleName, event) {
   event.stopPropagation();
-  state.selectedModules = state.selectedModules.filter((item) => item !== moduleName);
+  const key = optionKey(moduleName);
+  state.selectedModules = state.selectedModules.filter((item) => optionKey(item) !== key);
   renderModuleSelector();
   updateGenerateButton();
 }
@@ -369,35 +919,64 @@ function renderModuleSelector() {
     els.selectedModules.innerHTML = '<span class="multiselect-placeholder">Search and select module context...</span>';
   } else {
     els.selectedModules.innerHTML = state.selectedModules.map((moduleName) => `
-      <span class="project-chip">
+      <span class="project-chip" data-module-chip="${escapeHtml(moduleName)}">
         ${escapeHtml(moduleName)}
-        <button type="button" onclick="removeModule('${escapeHtml(moduleName)}', event)" title="Remove ${escapeHtml(moduleName)}">×</button>
+        <button type="button" class="remove-module-chip" data-module="${escapeHtml(moduleName)}" title="Remove ${escapeHtml(moduleName)}">×</button>
       </span>
     `).join('');
   }
 
   const query = els.moduleSearch.value.trim().toLowerCase();
-  const options = MODULE_OPTIONS.filter((moduleName) => moduleName.toLowerCase().includes(query));
+  const options = state.moduleOptions.filter((moduleName) => moduleName.toLowerCase().includes(query));
   els.moduleOptions.innerHTML = options.length
     ? options.map((moduleName) => {
-        const selected = state.selectedModules.includes(moduleName);
+        const selected = state.selectedModules.some((item) => optionKey(item) === optionKey(moduleName));
         return `
-          <button class="project-option ${selected ? 'selected' : ''}" type="button" data-module="${escapeHtml(moduleName)}">
+          <div class="project-option ${selected ? 'selected' : ''}" role="button" tabindex="0" data-module="${escapeHtml(moduleName)}">
             <span>${escapeHtml(moduleName)}</span>
-            <span class="option-check">${selected ? '✓' : ''}</span>
-          </button>`;
+            <span class="project-option-actions">
+              <span class="option-check">${selected ? '✓' : ''}</span>
+              <button class="delete-option-btn" type="button" data-delete-module="${escapeHtml(moduleName)}" aria-label="Delete ${escapeHtml(moduleName)}">×</button>
+            </span>
+          </div>`;
       }).join('')
-    : '<div class="project-option" style="cursor:default;">No matching modules</div>';
+    : `<div class="managed-empty-state">${query ? 'No matching modules. Add it to use it.' : 'No modules yet. Type a module name and add it.'}</div>`;
 
   els.clearModulesBtn.classList.toggle('hidden', state.selectedModules.length === 0);
 }
 
 els.moduleToggle.addEventListener('click', toggleModuleMenu);
-els.moduleSearch.addEventListener('input', renderModuleSelector);
+els.moduleSearch.addEventListener('input', () => {
+  clearManagedValidation('module');
+  renderModuleSelector();
+});
+els.moduleSearch.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    addManagedOption('module');
+  }
+});
+els.addModuleBtn.addEventListener('click', () => addManagedOption('module'));
 els.clearModulesBtn.addEventListener('click', clearModules);
+els.selectedModules.addEventListener('click', (event) => {
+  const removeBtn = event.target.closest('.remove-module-chip[data-module]');
+  if (removeBtn) removeModule(removeBtn.dataset.module, event);
+});
 els.moduleOptions.addEventListener('click', (event) => {
+  const deleteBtn = event.target.closest('[data-delete-module]');
+  if (deleteBtn) {
+    deleteManagedOption('module', deleteBtn.dataset.deleteModule, event);
+    return;
+  }
   const option = event.target.closest('.project-option[data-module]');
   if (option) toggleModuleSelection(option.dataset.module);
+});
+els.moduleOptions.addEventListener('keydown', (event) => {
+  if (!['Enter', ' '].includes(event.key)) return;
+  const option = event.target.closest('.project-option[data-module]');
+  if (!option || event.target.closest('[data-delete-module]')) return;
+  event.preventDefault();
+  toggleModuleSelection(option.dataset.module);
 });
 document.addEventListener('click', (event) => {
   if (!els.moduleMultiselect.contains(event.target)) closeModuleMenu();
@@ -423,6 +1002,7 @@ els.textInput.addEventListener('input', () => {
   updateGenerateButton();
 });
 els.jiraId.addEventListener('input', updateGenerateButton);
+els.clickupTaskId.addEventListener('input', updateGenerateButton);
 els.githubUrl.addEventListener('input', updateGenerateButton);
 els.additionalCtx.addEventListener('input', updateGenerateButton);
 
@@ -488,6 +1068,32 @@ async function fetchJiraPreview() {
   }
 }
 
+// ── ClickUp Preview ───────────────────────────────────────────────────────
+els.fetchClickupBtn.addEventListener('click', fetchClickUpPreview);
+els.clickupTaskId.addEventListener('keydown', (e) => { if (e.key === 'Enter') fetchClickUpPreview(); });
+
+async function fetchClickUpPreview() {
+  const id = els.clickupTaskId.value.trim();
+  if (!id) return;
+  els.fetchClickupBtn.disabled = true;
+  els.clickupPreview.innerHTML = '<span style="color:var(--text-muted)">Fetching ClickUp task...</span>';
+  els.clickupPreview.classList.remove('hidden');
+  try {
+    const task = await apiGet(`/api/clickup/task/${encodeURIComponent(id)}`);
+    const tags = Array.isArray(task.tags) && task.tags.length ? ` · Tags: ${task.tags.map(escapeHtml).join(', ')}` : '';
+    const description = task.description ? escapeHtml(task.description).slice(0, 180) : 'No description provided';
+    els.clickupPreview.innerHTML = `
+      <div class="preview-id">${escapeHtml(task.task_id)}</div>
+      <div class="preview-title">${escapeHtml(task.title)}</div>
+      <div class="preview-meta">${escapeHtml(task.status || 'Unknown')} · Priority: ${escapeHtml(task.priority || 'Unset')} · ${escapeHtml(task.assignee || 'Unassigned')}${tags}</div>
+      <div class="preview-meta" style="margin-top:6px;line-height:1.4;">${description}${task.description && task.description.length > 180 ? '...' : ''}</div>`;
+  } catch (err) {
+    els.clickupPreview.innerHTML = `<span style="color:var(--high);font-size:0.75rem;">⚠ ${escapeHtml(err.message)}</span>`;
+  } finally {
+    els.fetchClickupBtn.disabled = false;
+  }
+}
+
 // ── Generate Test Cases ───────────────────────────────────────────────────
 els.generateBtn.addEventListener('click', handleGenerate);
 
@@ -495,6 +1101,7 @@ async function handleGenerate() {
   if (state.isLoading) return;
 
   const jiraId    = els.jiraId.value.trim();
+  const clickupTaskId = els.clickupTaskId.value.trim();
   const textInput = els.textInput.value.trim();
   const githubUrl = els.githubUrl.value.trim();
   const addCtx    = els.additionalCtx.value.trim();
@@ -512,8 +1119,8 @@ async function handleGenerate() {
     return;
   }
 
-  if (!jiraId && !textInput && !githubUrl && !hasFile) {
-    showToast('Please select Project, Module, and at least one requirement source (Jira, Text, Document, or GitHub PR).', 'error');
+  if (!jiraId && !clickupTaskId && !textInput && !githubUrl && !hasFile) {
+    showToast('Please select Project, Module, and at least one requirement source (Jira, ClickUp, Text, Document, or GitHub PR).', 'error');
     updateGenerateButton();
     return;
   }
@@ -527,6 +1134,7 @@ async function handleGenerate() {
     state.selectedProjects.forEach((project) => formData.append('selected_projects', project));
     state.selectedModules.forEach((moduleName) => formData.append('selected_modules', moduleName));
     if (jiraId)    formData.append('jira_id', jiraId);
+    if (clickupTaskId) formData.append('clickup_task_id', clickupTaskId);
     if (textInput) formData.append('text_input', textInput);
     if (githubUrl) formData.append('github_pr_url', githubUrl);
     if (addCtx)    formData.append('additional_context', addCtx);
@@ -534,6 +1142,7 @@ async function handleGenerate() {
 
     const sourceTypes = [];
     if (jiraId)    sourceTypes.push('jira');
+    if (clickupTaskId) sourceTypes.push('clickup');
     if (hasFile)   sourceTypes.push('document');
     if (textInput) sourceTypes.push('text');
     if (githubUrl) sourceTypes.push('github_pr');
@@ -1145,7 +1754,12 @@ function resetToEmpty() {
   localStorage.removeItem(SESSION_STORAGE_KEY);
   clearProjects();
   clearModules();
+  els.jiraId.value = '';
+  els.clickupTaskId.value = '';
+  els.clickupPreview.classList.add('hidden');
+  els.jiraPreview.classList.add('hidden');
   els.statsPanel.classList.add('hidden');
+  updateGenerateButton();
 }
 
 function saveExecutionSession() {
@@ -1226,17 +1840,18 @@ function escapeHtml(str) {
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────
-(function init() {
+(async function init() {
   showPanel('empty');
+  loadManagedOptions('project');
+  loadManagedOptions('module');
   renderModuleSelector();
   renderProjectSelector();
   updateGenerateButton();
-  restoreExecutionSession();
   checkHealth();
-  // Load initial history count for the badge
-  apiGet('/api/export/history').then((data) => {
-    const count = (data.exports || []).length;
-    if (els.histCountBadge) els.histCountBadge.textContent = count;
-    if (els.tabHistCount)   els.tabHistCount.textContent   = count;
-  }).catch(() => {});
+  const user = await requireCurrentUser();
+  if (user) {
+    restoreExecutionSession();
+    loadIntegrationStatus();
+    loadHistoryCount();
+  }
 })();
