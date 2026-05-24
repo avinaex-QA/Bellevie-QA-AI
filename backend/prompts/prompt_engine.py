@@ -23,7 +23,7 @@ class PromptEngine:
         source_type: str,
     ) -> tuple[str, str]:
         """
-        Returns (system_prompt, user_prompt) ready to send to the AI.
+        Returns (system_prompt, user_prompt) ready to send to the - AI.
         """
         user_prompt = USER_PROMPT_TEMPLATE.format(
             requirements=requirements,
